@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+# uv.lock: untracked until dependencies are frozen (M0), then remove this line
+uv.lock
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
+# Local databases and run artifacts (never in git)
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.db
+runs/
+artifacts/
+
+# Fuzzing
+fuzzing/corpus/**
+!fuzzing/corpus/.gitkeep
+*.sancov
+*.hn
+.afl/
+
+# Toy binaries: keep sources, ignore built ELFs
+toys/**/build/*.elf
+toys/**/build/*.bin
+
+# Ghidra / analysis exports
+analysis/exports/
+ghidra_projects/
+
+# OS / editor
+.DS_Store
+*.swp

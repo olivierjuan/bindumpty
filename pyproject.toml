@@ -1,0 +1,42 @@
+[project]
+name = "fuz-llm"
+version = "0.1.0"
+description = "CEGIS reimplementation of stripped C++ functions: LLM synthesizer + differential fuzzer + DB-backed orchestrator"
+requires-python = ">=3.12"
+# Versions below are the whitepaper's default choices; they must be frozen
+# (with exact pins) after the M0 spikes S1-S5. Do not treat as verified.
+dependencies = [
+    "pydantic-ai",            # agent runtime (dev / fixer workers); alternative: mini-SWE-agent for hard functions
+    "pyghidra",               # headless Ghidra: decompilation, call graph, RTTI
+    "frida",                  # record-replay (M0-M1) and prototype hooking
+    "alembic",                # versioned schema migrations
+    "sqlalchemy>=2",          # SQLAlchemy 2; SQLite (WAL) through M2, PostgreSQL after
+    "psycopg[binary]>=3",     # PostgreSQL driver (M3: SKIP LOCKED, LISTEN/NOTIFY)
+    "z3-solver",              # SMT encoding, validation by translation (M4)
+    "inspect-ai",             # benchmark prompts/models on toy binaries (NFR-2)
+    "numpy",                  # score vectors, Pareto front (graveyard)
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "ruff",
+    "mypy",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
