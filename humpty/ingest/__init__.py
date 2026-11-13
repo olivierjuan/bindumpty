@@ -141,23 +141,25 @@ def call_graph_topo_order(
     for sid, comp in enumerate(sccs):
         for n in comp:
             comp_of[n] = sid
-    comp_index: dict[int, int] = {}
+    comp_units: dict[int, int] = {}
+    node_unit: dict[int, int] = {}
     units: list[list[int]] = []
     for n in node_ids:
         c = comp_of.get(n)
         if c is None:
-            comp_index[n] = len(units)
+            node_unit[n] = len(units)
             units.append([n])
         else:
-            if c not in comp_index:
-                comp_index[c] = len(units)
+            if c not in comp_units:
+                comp_units[c] = len(units)
                 units.append([])
-            units[comp_index[c]].append(n)
+            node_unit[n] = comp_units[c]
+            units[comp_units[c]].append(n)
     n_units = len(units)
     indeg = [0] * n_units
     adj: list[list[int]] = [[] for _ in range(n_units)]
     for a, b in edges:
-        ca, cb = comp_index[a], comp_index[b]
+        ca, cb = node_unit[a], node_unit[b]
         if ca == cb:
             continue  # intra-SCC (recursive) edge: contracted
         adj[cb].append(ca)  # a calls b => b (callee) precedes a (caller)
@@ -215,7 +217,10 @@ def load_call_graph(session: Session, *, json_path: str | Path, binary: str | Pa
             binary_sha256=sha,
             address=addr,
             size=size,
-            demangled_sig=sig,
+            # For a stripped binary the analyzer's name (FUN_000011b0 or a
+            # demangled symbol) is the best identifier available; keep it in
+            # demangled_sig so prompts and reports can reference the function.
+            demangled_sig=sig if sig is not None else str(name),
             has_rtti=has_rtti,
             state=State.PENDING.value,
         )
@@ -251,8 +256,8 @@ def load_call_graph(session: Session, *, json_path: str | Path, binary: str | Pa
             assert fn is not None
             fn.scc_id = sid
 
-    # --- topological order ---------------------------------------------
-    order = call_graph_topo_order(nodes, [(a, b) for a, b, _ in edges])
+    # --- topological order (SCC-condensed) -------------------------------
+    order = call_graph_topo_order(nodes, [(a, b) for a, b, _ in edges], sccs=sccs)
 
     session.flush()
     return Graph(functions=ids, edges=edges, topological_order=order, scc_ids=scc_ids)

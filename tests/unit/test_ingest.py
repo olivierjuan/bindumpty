@@ -122,7 +122,9 @@ def test_load_creates_functions_and_edges(factory, tmp_path):
     with session_scope(factory) as s:
         assert s.query(Function).count() == 2
         assert s.query(CallEdge).count() == 1
-        a = s.query(Function).filter_by(name="a").one()
+        # a is at 0x1000 (the call-graph's "name" is an internal join key;
+        # the DB row is keyed on (binary_sha256, address), per §6).
+        a = s.query(Function).filter_by(address=0x1000).one()
         assert a.state == State.PENDING.value
         assert a.binary_sha256 == binary_sha256(elf)
 
@@ -174,8 +176,8 @@ def test_load_records_scc_id_for_recursive_pair(factory, tmp_path):
     # Both a and b share an SCC id.
     assert g.scc_ids[g.functions["a"]] == g.scc_ids[g.functions["b"]]
     with session_scope(factory) as s:
-        a = s.query(Function).filter_by(name="a").one()
-        b = s.query(Function).filter_by(name="b").one()
+        a = s.query(Function).filter_by(demangled_sig="a").one()
+        b = s.query(Function).filter_by(demangled_sig="b").one()
         assert a.scc_id is not None and a.scc_id == b.scc_id
 
 
@@ -185,9 +187,15 @@ def test_load_is_rolled_back_on_failure(factory, tmp_path):
     # First, a valid load commits.
     with session_scope(factory) as s:
         load_call_graph(s, json_path=cg, binary=elf)
-    # Now a bad graph in a fresh transaction: must raise and roll back.
-    bad, _ = _minimal_graph(tmp_path, edges=[{"caller": "b", "callee": "nope"}])
-    with pytest.raises(CallGraphError):
+    # Now a bad graph: distinct addresses (past the uniqueness constraint),
+    # but an edge to an unknown endpoint — must raise and roll back the
+    # function inserts made before the failure.
+    bad_funcs = [
+        {"name": "c", "address": "0x2000", "size": 10},
+        {"name": "d", "address": "0x2100", "size": 20},
+    ]
+    bad, _ = _minimal_graph(tmp_path, funcs=bad_funcs, edges=[{"caller": "d", "callee": "nope"}])
+    with pytest.raises(CallGraphError, match="unknown endpoint"):
         with session_scope(factory) as s:
             load_call_graph(s, json_path=bad, binary=elf)
     # Row count unchanged from the first (committed) load.
