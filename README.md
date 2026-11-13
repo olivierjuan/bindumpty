@@ -1,4 +1,4 @@
-# bindumpty — Fuz Llm
+# bindumpty
 
 Reconstructs readable, behaviorally equivalent **C** source from a stripped,
 non-obfuscated x86-64 C++ binary, one function at a time, bottom-up from the
