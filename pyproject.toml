@@ -1,7 +1,7 @@
 [project]
-name = "fuz-llm"
+name = "humpty"
 version = "0.1.0"
-description = "CEGIS reimplementation of stripped C++ functions: LLM synthesizer + differential fuzzer + DB-backed orchestrator"
+description = "humpty (bindumpty): CEGIS reimplementation of stripped C++ functions. The egg = CLI/orchestrator; the men = LLM workers; the horses = the fuzzer."
 requires-python = ">=3.12"
 # Versions below are the whitepaper's default choices; they must be frozen
 # (with exact pins) after the M0 spikes S1-S5. Do not treat as verified.
@@ -15,6 +15,8 @@ dependencies = [
     "z3-solver",              # SMT encoding, validation by translation (M4)
     "inspect-ai",             # benchmark prompts/models on toy binaries (NFR-2)
     "numpy",                  # score vectors, Pareto front (graveyard)
+    "pyyaml>=6.0.3",
+    "psutil>=7.2.2",
 ]
 
 [project.optional-dependencies]
@@ -27,7 +29,11 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+markers = [
+    "sandbox: tests that run code inside the sandbox container (deselected by default)",
+]
 
 [tool.ruff]
 line-length = 110
@@ -40,3 +46,15 @@ strict = true
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.5.0",
+]
+
+[project.scripts]
+egg = "humpty.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["humpty"]

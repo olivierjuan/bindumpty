@@ -1,6 +1,9 @@
-# harness/
+# horses/ — the fuzzer
 
-C/C++ side: the differential harness, hooks, and fuzz entry points.
+C/C++ differential harness, hooks, and fuzz entry points. The reference to the
+humpty-dumpty story: the **horses** (king's men are the LLM workers, see
+`humpty/men/`) carry the brute-force work — differential execution and fuzzing.
+
 Compiled with clang (libFuzzer, ASan, UBSan) (WHITEPAPERS.md §5).
 
 ## Layout
@@ -8,6 +11,13 @@ Compiled with clang (libFuzzer, ASan, UBSan) (WHITEPAPERS.md §5).
 - `src/` — harness implementation (M1+): differential driver, memory-state diff
   (FR-9), fork server / global-state reset (FR-16), C `LLVMFuzzerTestOneInput`.
 - `include/` — public headers of the harness for candidate registration.
+- `libfuzzer/` — build and run scripts for the in-process libFuzzer harness
+  (persistent mode, candidate-coverage guided, sanitizers on).
+- `afl/` — AFL++ campaigns (frida_mode or qemu_mode) when coverage feedback from
+  the original binary itself is required (M2).
+- `corpus/` — corpus seeds assembled from traces (FR-3); committed per toy
+  binary, large generated corpora stay in the sandbox / run artifacts, not the
+  repo.
 - `third_party/` — vendored hooks (funchook first; subhook as alternative) and
   their pin versions (NFR-8).
 
@@ -29,3 +39,7 @@ Python never runs the harness directly: it builds the candidate C source, compil
 it inside the sandbox, and launches the fuzz binary there. Every divergence the
 harness reports (input, expected, observed, kind: return/memory/UB) is written by
 Python to `counterexamples` and `events`.
+
+Non-determinism neutralization (FR-16) — pinned time, randomness, pointer
+addresses, unordered-container iteration order — is implemented in `src/`
+and must be identical across engines.

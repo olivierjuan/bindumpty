@@ -1,0 +1,45 @@
+{
+  "format": "fuz.function-specs/1",
+  "note": "I/O specs and curated valid-input sets for record-replay (FR-3). Byte inputs are hex-encoded. Addresses are PIE virtual addresses (file offset == vaddr in this build); the driver resolves the ASLR base at runtime (FR-7 mechanics).",
+  "functions": [
+    {
+      "name": "fnv1a",
+      "address": "0x11b0",
+      "args_layout": "(data: bytes, len: u64)",
+      "ret_type": "u32",
+      "writes_memory": false,
+      "inputs": {
+        "data": [
+          "", "61", "6161", "616161", "6162", "666f6f626172",
+          "000fe001", "0000000000000102030405060708090a0b0c0d0e0f",
+          "0000000000000000000000000000000000000000000000000000000000000000",
+          "00000000000000000000000000000000"
+        ]
+      }
+    },
+    {
+      "name": "digit_sum_u32",
+      "address": "0x11e0",
+      "args_layout": "(x: u32)",
+      "ret_type": "i32",
+      "writes_memory": false,
+      "inputs": {
+        "x": [0, 1, 7, 10, 1234, 9999, 4294967295, 268435455, 42, 1000000007]
+      }
+    },
+    {
+      "name": "checksum_block",
+      "address": "0x1220",
+      "args_layout": "(data: bytes, len: u64)",
+      "ret_type": "u32",
+      "writes_memory": false,
+      "inputs": {
+        "data": [
+          "", "6162", "616263", "61616262",
+          "0000000000000102030405060708090a0b0c0d0e0f",
+          "0000000000000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+        ]
+      }
+    }
+  ]
+}

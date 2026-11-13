@@ -15,5 +15,5 @@ initial fuzz corpus, and the concrete examples in LLM prompts.
 ## Deliverable per run
 
 A trace bundle per (binary, function, input-set) with digests, consumed by
-`fuz.trace`. Replaying an existing bundle must reproduce the recorded I/O exactly
+`humpty.trace`. Replaying an existing bundle must reproduce the recorded I/O exactly
 (NFR-2).

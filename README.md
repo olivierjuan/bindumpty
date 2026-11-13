@@ -24,11 +24,10 @@ callees are trusted; *proven* only via equivalence checking (FR-11).
 | The requirements | [WHITEPAPERS.md](WHITEPAPERS.md) |
 | The build plan (milestones, risks, open decisions) | [ROADMAP.md](ROADMAP.md) |
 | Architecture decisions | [docs/decisions/](docs/decisions/) |
-| Python pipeline (orchestrator, workers, DB) | [fuz/](fuz/) |
-| C/C++ differential harness and hooks | [harness/](harness/) |
+| **The king's court** — `egg` CLI, the king (orchestrator), the men (LLM workers), the DB | [humpty/](humpty/) |
+| **The horses** — C/C++ differential harness, hooks, libFuzzer/AFL++ (the fuzzer) | [horses/](horses/) |
 | Ghidra scripts and fingerprint corpus | [analysis/](analysis/) |
 | Record-replay instrumentation | [tracing/](tracing/) |
-| Fuzz engine wiring (libFuzzer / AFL++) | [fuzzing/](fuzzing/) |
 | Sandbox and SLURM deployment | [sandbox/](sandbox/) |
 | Toy binaries with known sources (validation baseline) | [toys/](toys/) |
 | Prompt/model benchmarks | [bench/](bench/) |
@@ -45,8 +44,23 @@ callees are trusted; *proven* only via equivalence checking (FR-11).
 | M3 | Parallelization and orchestration (queue, event bus, scheduler, graveyard) | not started |
 | M4 | Strong validation (LLM-vs-LLM, Alive2/Z3, information-gain scheduling) | not started |
 
+## Naming
+
+Humpty Dumpty, mapped onto the system:
+
+| Rhyme | System |
+| --- | --- |
+| Humpty Dumpty (the egg) | a candidate reimplementation; also the `egg` executable |
+| the wall | the original binary — the reference the candidate must match |
+| the great fall | a divergence found by the fuzzer |
+| the King | the orchestrator (`humpty/king/`) |
+| all the King's horses | `horses/` — the differential fuzzer |
+| all the King's men | `humpty/men/` — the LLM developer/fixer workers |
+| "couldn't put Humpty back again" | K iterations exhausted → original stands in (NFR-7) |
+
 ## Repository status
 
-Scaffolded 2026-11-13 from WHITEPAPERS.md. Directory structure and manifests
-only — no implementation yet. First work items: M0 spikes S1–S5 and the
-sandbox + DB schema (see [ROADMAP.md](ROADMAP.md), "Immediate next steps").
+Scaffolded 2026-11-13 from WHITEPAPERS.md; court renamed 2026-11-14.
+Directory structure, manifests, and M0 core implementation in progress.
+First work items: M0 spikes S1–S5 (see [ROADMAP.md](ROADMAP.md),
+"Immediate next steps").

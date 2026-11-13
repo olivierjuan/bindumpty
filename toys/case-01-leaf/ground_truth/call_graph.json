@@ -1,0 +1,55 @@
+{
+  "format": "fuz.call-graph/1",
+  "binary": {
+    "sha256": "PENDING_BUILD_SHA",
+    "arch": "x86-64",
+    "kind": "elf",
+    "is_pie": true,
+    "is_stripped": true
+  },
+  "functions": [
+    {
+      "name": "fnv1a",
+      "address": "0x11b0",
+      "size": 48,
+      "demangled_sig": "unsigned int fnv1a(const unsigned char *, unsigned long)",
+      "has_rtti": false,
+      "scc_id": null,
+      "is_library": false
+    },
+    {
+      "name": "digit_sum_u32",
+      "address": "0x11e0",
+      "size": 64,
+      "demangled_sig": "int digit_sum_u32(unsigned int)",
+      "has_rtti": false,
+      "scc_id": null,
+      "is_library": false
+    },
+    {
+      "name": "checksum_block",
+      "address": "0x1220",
+      "size": 80,
+      "demangled_sig": "unsigned int checksum_block(const unsigned char *, unsigned long)",
+      "has_rtti": false,
+      "scc_id": null,
+      "is_library": false
+    },
+    {
+      "name": "main",
+      "address": "0x1270",
+      "size": 352,
+      "demangled_sig": "int main(int, char **)",
+      "has_rtti": false,
+      "scc_id": null,
+      "is_library": false
+    }
+  ],
+  "edges": [
+    { "caller": "checksum_block", "callee": "fnv1a", "kind": "direct" },
+    { "caller": "checksum_block", "callee": "digit_sum_u32", "kind": "direct" },
+    { "caller": "main", "callee": "checksum_block", "kind": "direct" }
+  ],
+  "sccs": [],
+  "topological_order": ["fnv1a", "digit_sum_u32", "checksum_block", "main"]
+}
