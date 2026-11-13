@@ -1,0 +1,45 @@
+# Fuz Llm pipeline configuration.
+#
+# Every key here is OPTIONAL — the pipeline runs with defaults (see
+# humpty/config.py). This file exists to make the *open decisions* from
+# WHITEPAPERS.md §9 explicit knobs, each annotated with its "decide by"
+# milestone. When a decision is settled, change the value here and file an ADR
+# in docs/decisions/.
+#
+# The database DSN is NOT set here: it comes from the HUMPTY_DB_URL
+# environment variable (SQLite through M2, PostgreSQL from M3).
+
+# --- CEGIS budget / LLM cost (NFR-6) -------------------------------------
+# Cap K: max repair iterations per function before FAILED (NFR-7 fallback).
+#max_iterations_k: 8
+# N: developer-sampled candidates per ready function (FR-4).
+#candidate_count_n: 3
+# Fuzz budget per campaign (executions).
+#fuzz_budget_exec: 100000
+
+# --- "trusted" threshold (open, decide by M1) -----------------------------
+#trusted_min_exec: 50000
+#trusted_min_coverage: 0.0
+
+# --- memory diff (open, decide by M2) -------------------------------------
+# all_written | regions_under_this
+#memory_diff_granularity: all_written
+
+# --- SCC / recursion (open, decide by M2) ---------------------------------
+# indivisible | unroll
+#scc_policy: indivisible
+
+# --- graveyard (open, decide by M3) ---------------------------------------
+#graveyard_pareto_weights:
+#  trace_pass_rate: 1.0
+#  fuzz_divergence_rate: -1.0   # lower is better
+#  simplicity: 0.5
+#graveyard_max_per_function: 32
+
+# --- LLM ------------------------------------------------------------------
+#llm_sampling_model: local/vllm
+#llm_fixer_model: api/strong
+#llm_cache: true
+
+# --- observability (NFR-5) ------------------------------------------------
+#log_level: info

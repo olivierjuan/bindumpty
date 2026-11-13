@@ -215,6 +215,7 @@ def load_call_graph(session: Session, *, json_path: str | Path, binary: str | Pa
             raise CallGraphError(f"duplicate function name {name!r}")
         row = Function(
             binary_sha256=sha,
+            name=str(name),
             address=addr,
             size=size,
             # For a stripped binary the analyzer's name (FUN_000011b0 or a

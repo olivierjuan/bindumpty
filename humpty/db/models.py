@@ -94,6 +94,12 @@ class Function(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     # (+aux) which binary this row belongs to (NFR-2 replay identity).
     binary_sha256: Mapped[str] = mapped_column(String(64), index=True)
+    # (+aux) the analyzer's function name — "fnv1a", or "FUN_000011b0" for a
+    # stripped binary (Ghidra convention). This is the join key with trace
+    # bundles and fingerprint matches; demangled_sig below carries the full
+    # reconstructed signature. Not in the §6 column list, but load-bearing
+    # (same category as binary_sha256).
+    name: Mapped[str] = mapped_column(String(255), index=True)
     address: Mapped[int] = mapped_column(BigInteger, index=True)
     size: Mapped[int | None] = mapped_column(Integer)
     demangled_sig: Mapped[str | None] = mapped_column(Text)
@@ -112,6 +118,7 @@ class Function(Base):
 
     __table_args__ = (
         UniqueConstraint("binary_sha256", "address", name="uq_functions_binary_address"),
+        UniqueConstraint("binary_sha256", "name", name="uq_functions_binary_name"),
         Index("ix_functions_state", "state"),
     )
 

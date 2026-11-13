@@ -80,20 +80,20 @@ def test_migration_creates_all_tables(engine):
 def test_function_identity_is_binary_and_address(factory):
     sha = hashlib.sha256(b"toy-case-01").hexdigest()
     with session_scope(factory) as s:
-        s.add(Function(binary_sha256=sha, address=0x401000, state=State.PENDING.value))
+        s.add(Function(binary_sha256=sha, name="fn", address=0x401000, state=State.PENDING.value))
     with pytest.raises(IntegrityError):
         with session_scope(factory) as s:
-            s.add(Function(binary_sha256=sha, address=0x401000, state=State.PENDING.value))
+            s.add(Function(binary_sha256=sha, name="fn", address=0x401000, state=State.PENDING.value))
     # Same address in a *different* binary is fine.
     with session_scope(factory) as s:
-        s.add(Function(binary_sha256="0" * 64, address=0x401000, state=State.PENDING.value))
+        s.add(Function(binary_sha256="0" * 64, name="fn", address=0x401000, state=State.PENDING.value))
 
 
 def test_call_edge_dedup(factory):
     sha = hashlib.sha256(b"toy").hexdigest()
     with session_scope(factory) as s:
-        caller = Function(binary_sha256=sha, address=0x1000, state=State.PENDING.value)
-        callee = Function(binary_sha256=sha, address=0x2000, state=State.PENDING.value)
+        caller = Function(binary_sha256=sha, name="caller", address=0x1000, state=State.PENDING.value)
+        callee = Function(binary_sha256=sha, name="callee", address=0x2000, state=State.PENDING.value)
         s.add_all([caller, callee])
         s.flush()
         s.add(CallEdge(caller_id=caller.id, callee_id=callee.id, kind="direct"))
@@ -108,7 +108,7 @@ def test_event_commit_is_atomic_with_state_change(factory):
     """FR-17: the event row must die with the state change if the txn fails."""
     sha = hashlib.sha256(b"atomic").hexdigest()
     with session_scope(factory) as s:
-        fn = Function(binary_sha256=sha, address=0x5000, state=State.PENDING.value)
+        fn = Function(binary_sha256=sha, name="fn", address=0x5000, state=State.PENDING.value)
         s.add(fn)
         s.flush()
         ev = record_event(s, kind="function.created", function_id=fn.id)
@@ -144,7 +144,7 @@ def test_event_seq_is_monotonic(factory):
 def test_state_change_with_event_commits_together(factory):
     sha = hashlib.sha256(b"lifecycle").hexdigest()
     with session_scope(factory) as s:
-        fn = Function(binary_sha256=sha, address=0x6000, state=State.PENDING.value)
+        fn = Function(binary_sha256=sha, name="fn", address=0x6000, state=State.PENDING.value)
         s.add(fn)
         s.flush()
         fn.state = State.READY.value
@@ -163,7 +163,7 @@ def test_state_change_with_event_commits_together(factory):
 def test_candidate_lineage_and_source_hash(factory):
     sha = hashlib.sha256(b"lineage").hexdigest()
     with session_scope(factory) as s:
-        fn = Function(binary_sha256=sha, address=0x7000, state=State.READY.value)
+        fn = Function(binary_sha256=sha, name="fn", address=0x7000, state=State.READY.value)
         s.add(fn)
         s.flush()
         dev = Candidate(
@@ -188,7 +188,7 @@ def test_trace_and_counterexample_blobs_roundtrip(factory):
     sha = hashlib.sha256(b"blobs").hexdigest()
     args = bytes(range(64))
     with session_scope(factory) as s:
-        fn = Function(binary_sha256=sha, address=0x8000, state=State.PENDING.value)
+        fn = Function(binary_sha256=sha, name="fn", address=0x8000, state=State.PENDING.value)
         s.add(fn)
         s.flush()
         s.add(Trace(function_id=fn.id, args_blob=args, ret=b"\x42"))
@@ -212,7 +212,7 @@ def test_graveyard_dedup_by_candidate(factory):
     """FR-18: a candidate can be archived only once."""
     sha = hashlib.sha256(b"graveyard").hexdigest()
     with session_scope(factory) as s:
-        fn = Function(binary_sha256=sha, address=0x9000, state=State.DIVERGENT.value)
+        fn = Function(binary_sha256=sha, name="fn", address=0x9000, state=State.DIVERGENT.value)
         s.add(fn)
         s.flush()
         cand = Candidate(function_id=fn.id, source_code="x", created_by="fixer")

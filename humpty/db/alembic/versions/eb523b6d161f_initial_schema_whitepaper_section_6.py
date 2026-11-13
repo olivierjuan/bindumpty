@@ -24,6 +24,7 @@ def upgrade() -> None:
     op.create_table('functions',
     sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
     sa.Column('binary_sha256', sa.String(length=64), nullable=False),
+    sa.Column('name', sa.String(length=255), nullable=False),
     sa.Column('address', sa.BigInteger(), nullable=False),
     sa.Column('size', sa.Integer(), nullable=True),
     sa.Column('demangled_sig', sa.Text(), nullable=True),
@@ -36,10 +37,12 @@ def upgrade() -> None:
     sa.Column('created_at', sa.DateTime(), nullable=False),
     sa.Column('updated_at', sa.DateTime(), nullable=False),
     sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('binary_sha256', 'address', name='uq_functions_binary_address')
+    sa.UniqueConstraint('binary_sha256', 'address', name='uq_functions_binary_address'),
+    sa.UniqueConstraint('binary_sha256', 'name', name='uq_functions_binary_name')
     )
     op.create_index(op.f('ix_functions_address'), 'functions', ['address'], unique=False)
     op.create_index(op.f('ix_functions_binary_sha256'), 'functions', ['binary_sha256'], unique=False)
+    op.create_index(op.f('ix_functions_name'), 'functions', ['name'], unique=False)
     op.create_index(op.f('ix_functions_scc_id'), 'functions', ['scc_id'], unique=False)
     op.create_index('ix_functions_state', 'functions', ['state'], unique=False)
     op.create_table('types',

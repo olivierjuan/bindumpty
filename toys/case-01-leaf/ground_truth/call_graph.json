@@ -1,7 +1,7 @@
 {
   "format": "fuz.call-graph/1",
   "binary": {
-    "sha256": "PENDING_BUILD_SHA",
+    "sha256": "d1483281e242d91cb6a9a139505461ff8569788299593825cfa9872a36c8a454",
     "arch": "x86-64",
     "kind": "elf",
     "is_pie": true,
@@ -46,10 +46,27 @@
     }
   ],
   "edges": [
-    { "caller": "checksum_block", "callee": "fnv1a", "kind": "direct" },
-    { "caller": "checksum_block", "callee": "digit_sum_u32", "kind": "direct" },
-    { "caller": "main", "callee": "checksum_block", "kind": "direct" }
+    {
+      "caller": "checksum_block",
+      "callee": "fnv1a",
+      "kind": "direct"
+    },
+    {
+      "caller": "checksum_block",
+      "callee": "digit_sum_u32",
+      "kind": "direct"
+    },
+    {
+      "caller": "main",
+      "callee": "checksum_block",
+      "kind": "direct"
+    }
   ],
   "sccs": [],
-  "topological_order": ["fnv1a", "digit_sum_u32", "checksum_block", "main"]
+  "topological_order": [
+    "fnv1a",
+    "digit_sum_u32",
+    "checksum_block",
+    "main"
+  ]
 }
