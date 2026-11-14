@@ -36,10 +36,13 @@ class Worker:
     def __init__(self, *, url: str, worker_id: str, llm_source=None,
                  fuzz_budget_s: int = 30, poll_interval_s: float = 1.0,
                  log=None):
-        from humpty.king.queue import Queue  # deferred: queue needs url
-        self.queue = Queue(sessionmaker=None, worker_id=worker_id, url=url)
-        self._S = __import__("sqlalchemy").orm.sessionmaker(bind=__import__(
-            "sqlalchemy").create_engine(url))
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        from humpty.king.queue import Queue
+
+        self._S = sessionmaker(bind=create_engine(url))
+        self.queue = Queue(self._S, worker_id=worker_id, url=url)
         self._url = url
         self.llm_source = llm_source
         self.fuzz_budget_s = fuzz_budget_s
