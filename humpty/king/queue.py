@@ -92,13 +92,27 @@ class Queue:
 
     def claim(self, kinds: tuple[str, ...] = ("develop", "fix", "fuzz"),
               ) -> Claim | None:
-        """Claim one pending job (FOR UPDATE SKIP LOCKED). Returns None when
-        the queue is empty. The claim commits immediately — the worker then
-        runs outside the lock."""
-        if not self._is_pg:
-            raise QueueError(
-                "the FR-14 queue requires PostgreSQL (SQLite is out of scope "
-                "for M3 orchestration per the roadmap)")
+        """Claim one pending job. Returns None when the queue is empty.
+        The claim commits immediately — the worker then runs outside the
+        lock.
+
+        Two backends, same contract:
+          PostgreSQL — `FOR UPDATE SKIP LOCKED`: concurrent claimers never
+            block each other; the row lock is held for the duration of the
+            single UPDATE ... RETURNING statement.
+          SQLite — `BEGIN IMMEDIATE`: the single-writer model serializes
+            claims, which makes the claim atomic by construction (SKIP
+            LOCKED has no meaning with one writer). The write lock is held
+            for the claim only (µs–ms); workers then run outside it. WAL
+            mode + `timeout` (humpty.db.session) absorbs contention. The
+            practical ceiling is ~tens of workers; PostgreSQL is the scale
+            path, unchanged.
+        """
+        if self._is_pg:
+            return self._claim_pg(kinds)
+        return self._claim_sqlite(kinds)
+
+    def _claim_pg(self, kinds: tuple[str, ...]) -> Claim | None:
         kind_list = ", ".join(f"'{k}'" for k in kinds)
         sql = text(f"""
             UPDATE king_jobs SET
@@ -120,6 +134,40 @@ class Queue:
         with self._sf() as s:
             row = s.execute(sql, {"worker": self._worker}).first()
             s.commit()
+            if row is None:
+                return None
+            return Claim(job_id=row[0], kind=row[1],
+                         payload=json.loads(row[2]), attempt=row[3])
+
+    def _claim_sqlite(self, kinds: tuple[str, ...]) -> Claim | None:
+        kind_list = ", ".join(f"'{k}'" for k in kinds)
+        sql = text(f"""
+            UPDATE king_jobs SET
+                status = 'claimed',
+                claimed_by = :worker,
+                claimed_at = CURRENT_TIMESTAMP,
+                attempts = attempts + 1
+            WHERE id = (
+                SELECT id FROM king_jobs
+                WHERE status = 'pending'
+                  AND attempts < max_attempts
+                  AND kind IN ({kind_list})
+                ORDER BY priority ASC, id ASC
+                LIMIT 1
+            )
+            RETURNING id, kind, payload_json, attempts
+        """)
+        # BEGIN IMMEDIATE takes the write lock up front: under WAL the claim
+        # is serialized against other claimers and never ends in a deferred-
+        # transaction upgrade deadlock. busy timeout absorbs contention.
+        with self._sf() as s:
+            s.connection().exec_driver_sql("BEGIN IMMEDIATE")
+            try:
+                row = s.execute(sql, {"worker": self._worker}).first()
+                s.commit()
+            except Exception:
+                s.rollback()
+                raise
             if row is None:
                 return None
             return Claim(job_id=row[0], kind=row[1],

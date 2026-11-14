@@ -17,8 +17,10 @@ Everything below was executed on the commit you are reading (see
 ## 0. Prerequisites
 
 - Linux x86-64, `git`, `python3.12+`, `clang` (19+ tested), `make`
-- PostgreSQL 16 **only for M3+ orchestration** (the queue needs it; all
-  validation runs on SQLite). A container is the easiest path:
+- PostgreSQL 16 **for orchestration at scale** (M3+). A SQLite fallback
+  ships in the queue (`BEGIN IMMEDIATE` claims — fine up to ~tens of
+  workers), so everything below also runs without any server. A PG
+  container is the easiest scale path:
 
 ```bash
 docker run -d --name humpty-pg -p 55433:5432 \
@@ -184,7 +186,7 @@ resurrect(session, function_id=fid, reason="callee fixed")
 | --- | --- | --- |
 | `tests skip: toy artifact missing` | binaries are git-ignored | `./toys/case-01-leaf/build.sh` |
 | `dlopen failed: cannot dynamically load position-independent executable` | you passed the PIE exe where a `.so` is expected | the M2 harness wants `build/toy01.so` |
-| `QueueError: the FR-14 queue requires PostgreSQL` | SQLite URL for orchestration | `HUMPTY_DB_URL=postgresql+psycopg://...` |
+| queue behaves oddly at very high worker counts | SQLite fallback's practical ceiling is ~tens of workers | `HUMPTY_DB_URL=postgresql+psycopg://...` (the SKIP LOCKED scale path) |
 | `unsupported java version` from Ghidra | 12.2 requires JDK 25 (21 rejected) | `apt install openjdk-25-jdk-headless`, set `JAVA_HOME_OVERRIDE` in `support/launch.properties` |
 | script class not found after editing a Ghidra script | poisoned OSGi bundle | wipe `~/.config/ghidra/ghidra_12.2_PUBLIC/osgi/{compiled-bundles,felixcache}` |
 | `undefined symbol` loading the candidate `.so` | the last loop wrote a parent-shaped candidate | rebuild: `horses/src/build_horse.sh`, or let the exit scripts rebuild (they do) |

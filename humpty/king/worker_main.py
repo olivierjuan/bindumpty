@@ -26,8 +26,8 @@ def main() -> int:
     args = ap.parse_args()
 
     url = os.environ.get("HUMPTY_DB_URL")
-    if not url or not url.startswith(("postgresql", "postgres")):
-        print("worker_main: HUMPTY_DB_URL must be PostgreSQL (FR-14)", file=sys.stderr)
+    if not url:
+        print("worker_main: HUMPTY_DB_URL is required", file=sys.stderr)
         return 2
 
     from humpty.king.workers import Worker

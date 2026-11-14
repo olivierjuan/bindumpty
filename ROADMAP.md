@@ -81,7 +81,7 @@ Work items:
 
 **Goal.** Several functions in parallel; confidence propagates upward. **Status:** **complete** — queue + bus + pools + demotion all live-verified on the S5 PG16 container (8 workers × 200 jobs: zero dupes, zero lost). Graveyard-seeded vs from-scratch A/B measured on the toy (both verify; the seeded path starts from the archive's best near-miss — the LLM-cost saving lands when the gateway is live). SLURM template bash-validated; no SLURM daemon on this host, so a deployed campaign run is the one item for a SLURM cluster.
 
-- [x] PostgreSQL + job queue (NFR-4): `humpty/king/queue.py` — SKIP LOCKED claim in one statement, priority-ordered, attempts-bounded retry; live-verified (8×200: no dupes/lost).
+- [x] Job queue (NFR-4): `humpty/king/queue.py` — **two backends, one contract**: PostgreSQL (`FOR UPDATE SKIP LOCKED`, the scale path; live-verified 8×200 no dupes/lost) and SQLite (`BEGIN IMMEDIATE` claim — atomic under the single-writer model, WAL + busy-timeout absorb contention; live-verified 8 threads × 50 jobs no dupes/lost; practical ceiling ~tens of workers). LISTEN/NOTIFY has no SQLite equivalent — the bus poller is the wake path there, as designed.
 - [x] Event bus (FR-17): write-in-transaction (record_event) + `humpty/king/bus.py` (cursor poller = correctness path, PG LISTEN/NOTIFY thread = latency path).
 - [x] Stateless worker pools: `humpty/king/workers.py` + `worker_main.py` (claim→handle→complete; re-queue on failure); live fuzz job through the real queue (rc 0).
 - [x] Scheduler (FR-14): ready set recomputation (`humpty/king/confidence.py`) + M4 information-gain ranking (`humpty/king/scheduler.py`).
