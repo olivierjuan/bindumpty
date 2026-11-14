@@ -63,7 +63,7 @@ Work items:
 
 ### M2 — Climbing the tree
 
-**Goal.** A parent and its callees subtree validated on a real stripped binary. **Status:** **complete** — exit criterion executed (`humpty/king/m2_exit.py`, exit 0): leaves validated via the M1 loop on the DB state machine, validated leaf sources substituted for the toy's real entries via funchook (FR-7), original parent oracle over them: 15.6M runs clean.
+**Goal.** A parent and its callees subtree validated on a real stripped binary. **Status:** **complete** — exit criterion executed (`humpty/king/m2_exit.py`, exit 0): leaves validated via the M1 loop on the DB state machine, validated leaf sources substituted for the toy's real entries via funchook (FR-7), original parent oracle over them: 15.6M runs clean. **Known generalization gap:** the hybrid harness is toy-shaped (hardcoded vaddrs/symbols); a per-binary harness generator (call-graph JSON → resolve table) is the missing piece for parent validation on arbitrary binaries — `humpty.king.run.run_subtree` routes parents to that path and skips them with an explicit reason rather than mis-validating.
 
 - [x] Hybrid harness (FR-6): `horses/src/m2_hybrid.c` — originals resolved from a shared-object build (dlsym; vaddr path via link_map kept), candidate parent vs original oracle; 15.8M clean.
 - [x] Address-based hooking (FR-7): funchook + capstone (S2-pinned) redirect the toy's real leaf entries to validated candidates; 15.4M clean in hook mode.
