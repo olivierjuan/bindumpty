@@ -33,7 +33,9 @@ __all__ = ["Shell", "main"]
 class Shell:
     def __init__(self, binary: str, backend: str = "objdump",
                  horses: int = 1, men: int = 1, fuzz_budget: int = 15,
-                 max_iter: int = 5, depth: int = 2, db: str | None = None):
+                 max_iter: int = 5, depth: int = 2, db: str | None = None,
+                 provider: str | None = None, model: str | None = None,
+                 api_base: str | None = None):
         from rich.console import Console
 
         self.binary = binary
@@ -47,6 +49,9 @@ class Shell:
         self.console = Console()
         self.symbols: dict = {}
         self.roots: list[str] = []
+        self.provider = provider
+        self.model = model
+        self.api_base = api_base
 
     # -- helpers -------------------------------------------------------------
 
@@ -58,8 +63,14 @@ class Shell:
         self.console.print(f"[blue]{len(self.symbols)} symbols loaded[/blue]")
 
     def _llm_status(self) -> str:
-        from humpty.king.cli import _llm_status
-        return _llm_status()
+        try:
+            from humpty.men.providers import resolve_provider
+            spec = resolve_provider(self.provider, self.model, self.api_base)
+        except Exception as e:
+            return f"[red]{e}[/red]"
+        key = os.environ.get(spec.api_key_env) if spec.api_key_env else "present"
+        key_part = f"key {'OK' if key else 'MISSING: ' + spec.api_key_env}"
+        return f"[green]{spec.provider}/{spec.model}[/green] ({key_part})"
 
     def _tree_for(self, name: str, depth: int | None = None):
         from humpty.analyze.symtree import Symbol, subtree
@@ -188,30 +199,82 @@ class Shell:
     def cmd_llm(self, args: list[str]) -> None:
         self.console.print(self._llm_status())
 
+    def cmd_provider(self, args: list[str]) -> None:
+        """provider [NAME] [MODEL] — switch or inspect the LLM provider."""
+        if not args:
+            self.console.print(self._llm_status())
+            return
+        self.provider = args[0]
+        self.model = args[1] if len(args) > 1 else None
+        try:
+            from humpty.men.providers import resolve_provider
+            spec = resolve_provider(self.provider, self.model, self.api_base)
+            self.console.print(f"[green]provider: {spec.provider}/"
+                               f"{spec.model}[/green]")
+        except Exception as e:
+            self.console.print(f"[red]{e}[/red]")
+
     def cmd_run(self, args: list[str]) -> None:
         if not self.roots:
             self.console.print("[red]no roots selected — use: select NAME[/red]")
             return
-        if "unreachable" in self._llm_status() or "NOT configured" in self._llm_status():
-            self.console.print(
-                "[red]LLM endpoint unreachable — the developer seam is the "
-                "synthesizer; bindumpty refuses to fake a reconstruction.[/red]\n"
-                "[yellow]set ANTHROPIC_BASE_URL/ANTHROPIC_AUTH_TOKEN to a "
-                "reachable endpoint, then retry.[/yellow]")
+        try:
+            from humpty.men.providers import resolve_provider, make_develop
+            spec = resolve_provider(self.provider, self.model, self.api_base)
+            if spec.api_key_env and not os.environ.get(spec.api_key_env):
+                self.console.print(f"[red]provider {spec.provider} needs "
+                                   f"{spec.api_key_env}[/red]")
+                return
+            develop = make_develop(spec)
+        except Exception as e:
+            self.console.print(f"[red]{e}[/red]")
             return
-        from humpty.king.cli import main as cli_main  # reuse the runner
-        argv = [self.binary]
-        for r in self.roots:
-            argv += ["--symbol", r]
-        argv += ["--backend", self.backend, "--horses", str(self.horses),
-                 "--men", str(self.men), "--fuzz-budget", str(self.fuzz_budget),
-                 "--max-iter", str(self.max_iter), "--depth", str(self.depth),
-                 "--yes"]
-        if self.db:
-            argv += ["--db", self.db]
-        rc = cli_main(argv)
-        if rc != 0:
-            self.console.print(f"[red]run exited {rc}[/red]")
+
+        from alembic import command
+        from alembic.config import Config
+        from sqlalchemy import create_engine
+        from humpty.db import make_session_factory
+        from humpty.db.session import session_scope
+        from humpty.ingest import binary_sha256, load_call_graph
+        from humpty.king.run import run_subtree
+
+        db_path = self.db or os.path.join(
+            tempfile.mkdtemp(prefix="bindumpty-run-"), "run.db")
+        eng = create_engine(f"sqlite:///{db_path}",
+                            connect_args={"timeout": 30,
+                                          "check_same_thread": False})
+        ini = Config(os.path.join(ROOT, "alembic.ini"))
+        ini.set_main_option("script_location",
+                            os.path.join(ROOT, "humpty/db/alembic"))
+        ini.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
+        command.upgrade(ini, "head")
+        factory = make_session_factory(eng)
+
+        from humpty.ingest import binary_sha256 as _sha
+        sha = _sha(self.binary)
+        with session_scope(factory) as s:
+            load_call_graph(s, json_path=self._graph_path(), binary=self.binary)
+
+        with session_scope(factory) as s:
+            rep = run_subtree(s, binary_sha256=sha, develop=develop,
+                              max_iter=self.max_iter,
+                              fuzz_budget_s=self.fuzz_budget)
+        from rich.tree import Tree
+        vt = Tree("[bold]run verdict[/bold]")
+        for name, v in rep.verdicts.items():
+            st = v.state
+            color = {"trusted": "green", "proven": "bold green",
+                     "failed": "red"}.get(st, "white")
+            vt.add(f"{name}: [{color}]{st}[/{color}] conf={v.confidence:.2f}")
+        self.console.print(vt)
+        self.console.print(f"[b]verified[/b]: {rep.verified_frac:.0%}  "
+                           f"[dim]db: {db_path}[/dim]")
+
+    def _graph_path(self) -> str:
+        from analysis.exporters import export_with
+        out = os.path.join(tempfile.mkdtemp(prefix="bindumpty-cg-"), "cg.json")
+        export_with(self.backend, self.binary, out)
+        return out
 
     def cmd_quit(self, args: list[str]) -> None:
         raise SystemExit(0)
@@ -225,6 +288,7 @@ class Shell:
         "show": "show current settings and selection",
         "set": "set horses/men/fuzz/max-iter/backend/depth",
         "llm": "check the LLM endpoint",
+        "provider": "provider [NAME] [MODEL] — switch the LLM provider",
         "run": "start the CEGIS run on the selected roots",
         "help": "this help",
         "quit": "leave the shell",
@@ -274,6 +338,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--max-iter", type=int, default=5)
     ap.add_argument("--depth", type=int, default=2)
     ap.add_argument("--db")
+    ap.add_argument("--provider")
+    ap.add_argument("--model")
+    ap.add_argument("--api-base")
     args = ap.parse_args(argv)
 
     if not os.path.exists(args.binary):
@@ -283,7 +350,8 @@ def main(argv: list[str] | None = None) -> int:
     shell = Shell(binary=args.binary, backend=args.backend,
                   horses=args.horses, men=args.men,
                   fuzz_budget=args.fuzz_budget, max_iter=args.max_iter,
-                  depth=args.depth, db=args.db)
+                  depth=args.depth, db=args.db, provider=args.provider,
+                  model=args.model, api_base=args.api_base)
     return shell.repl()
 
 

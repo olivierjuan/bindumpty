@@ -53,8 +53,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--max-iter", type=int, default=5,
                     help="CEGIS repair cap K (default 5)")
     ap.add_argument("--llm", action="store_true",
-                    help="use the live LLM developer (needs ANTHROPIC_* env); "
-                         "default refuses rather than fake a reconstruction")
+                    help="use the live LLM developer; default refuses rather "
+                         "than fake a reconstruction")
+    ap.add_argument("--provider", help="claude | litellm | gemini | "
+                 "openrouter | codex | modal | ollama | vllm")
+    ap.add_argument("--model", help="model id for the provider")
+    ap.add_argument("--api-base", help="OpenAI-compatible base URL "
+                 "(for modal/vllm/self-hosted endpoints)")
     ap.add_argument("--list", action="store_true",
                     help="show the symbol tree and exit (no run)")
     ap.add_argument("--yes", action="store_true",
@@ -104,23 +109,34 @@ def _summary_panel(tree, backend: str, args):
 
 
 def _llm_ready() -> bool:
-    return bool(os.environ.get("ANTHROPIC_AUTH_TOKEN")
-                and os.environ.get("ANTHROPIC_BASE_URL"))
+    return True  # the provider layer handles keys per provider
+
+
+def _provider_spec(args):
+    from humpty.men.providers import ProviderError, resolve_provider
+    try:
+        return resolve_provider(args.provider, args.model, args.api_base)
+    except ProviderError as e:
+        raise SystemExit(str(e))
 
 
 def _llm_status() -> str:
-    if not _llm_ready():
-        return "[red]NOT configured — run will refuse[/red]"
-    # cheap reachability probe (the S4 gateway has been timing out; config
-    # presence is not endpoint health)
-    import urllib.request
-    base = os.environ["ANTHROPIC_BASE_URL"]
+    """Honest status: resolved provider/model + key presence. Reachability
+    is only proven by the run itself (a 5s probe proved nothing but cost 5s)."""
     try:
-        with urllib.request.urlopen(f"{base}/v1/messages", timeout=5) as r:
-            return "[green]live[/green]"
+        from humpty.men.providers import resolve_provider
+        spec = resolve_provider(_prov_args.get("provider"),
+                                _prov_args.get("model"),
+                                _prov_args.get("api_base"))
     except Exception as e:
-        return f"[red]configured but unreachable ({type(e).__name__}) — " \
-               f"deterministic develop refused too: no source exists[/red]"
+        return f"[red]{e}[/red]"
+    key = os.environ.get(spec.api_key_env) if spec.api_key_env else "present"
+    key_ok = "key OK" if key else "[red]missing key "
+    key_ok += spec.api_key_env + "[/red]" if spec.api_key_env else ""
+    return f"[green]{spec.provider}/{spec.model}[/green] ({key_ok})"
+
+
+_prov_args: dict = {}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -128,6 +144,8 @@ def main(argv: list[str] | None = None) -> int:
 
     console = Console()
     args = build_arg_parser().parse_args(argv)
+    _prov_args.update(provider=args.provider, model=args.model,
+                      api_base=args.api_base)
 
     if not Path(args.binary).exists():
         console.print(f"[red]binary not found: {args.binary}[/red]")
@@ -183,15 +201,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.list:
         return 0
 
-    if not _llm_ready() or "unreachable" in _llm_status():
-        console.print(
-            "[red]The developer seam is the synthesizer — a stripped binary has "
-            "no source to extract, so bindumpty refuses to fake a "
-            "reconstruction.[/red]\n"
-            "[yellow]Fix: set ANTHROPIC_BASE_URL/ANTHROPIC_AUTH_TOKEN to a "
-            "reachable endpoint (retry/backoff is built in), or use "
-            "--list to study the tree and come back.[/yellow]")
+    try:
+        spec = _provider_spec(args)
+    except SystemExit as e:
+        console.print(f"[red]{e}[/red]")
         return 2
+    if args.llm and spec.api_key_env:
+        key = os.environ.get(spec.api_key_env)
+        if not key:
+            console.print(f"[red]provider {spec.provider} needs "
+                          f"{spec.api_key_env} in the environment[/red]")
+            return 2
 
     if not args.yes:
         console.print("[yellow]Run with these settings? (Ctrl-C to abort, "
@@ -227,8 +247,8 @@ def main(argv: list[str] | None = None) -> int:
         with session_scope(factory) as s:
             load_call_graph(s, json_path=_graph_for(args, trees), binary=args.binary)
 
-    from humpty.men.develop import make_llm_source
-    develop = make_llm_source()
+    from humpty.men.providers import make_develop
+    develop = make_develop(spec)
 
     live = console
     with session_scope(factory) as s:
