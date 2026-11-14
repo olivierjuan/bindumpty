@@ -62,11 +62,14 @@ class ExportResult:
         }
 
 
-def export_with(backend: str, binary: str | Path, out_json: str | Path) -> ExportResult:
-    """Run one backend by name. Unknown backends are a hard error."""
+def export_with(backend: str, binary: str | Path, out_json: str | Path,
+                progress=None) -> ExportResult:
+    """Run one backend by name. Unknown backends are a hard error.
+    `progress(done, total)` streams per-symbol progress for backends that
+    support it (objdump chunked mode); ignored by the rest."""
     if backend not in BACKENDS:
         raise ValueError(f"unknown backend {backend!r} (have: {sorted(BACKENDS)})")
-    return BACKENDS[backend](binary, out_json)
+    return BACKENDS[backend](binary, out_json, progress)
 
 
 def _write_out(res: ExportResult, out_json: str | Path, sha: str) -> ExportResult:
@@ -140,10 +143,11 @@ def _ghidra_backend(binary: str | Path, out_json: str | Path) -> ExportResult:
     return _write_out(res, out_json, h)
 
 
-def _objdump_write(binary: str | Path, out_json: str | Path) -> ExportResult:
+def _objdump_write(binary: str | Path, out_json: str | Path,
+                   progress=None) -> ExportResult:
     import hashlib
 
-    res = _objdump_backend(binary, out_json)
+    res = _objdump_backend(binary, out_json, progress=progress)
     h = hashlib.sha256(Path(binary).read_bytes()).hexdigest()
     return _write_out(res, out_json, h)
 

@@ -26,10 +26,74 @@ _INDIRECT_RE = re.compile(r"^\s*([0-9a-f]+):\s+(?:[0-9a-f]{2} )+\s+call\s+\*")
 
 
 def objdump_call_graph(binary: str | Path,
-                       name_map: dict[int, str] | None = None) -> ExportResult:
+                       name_map: dict[int, str] | None = None,
+                       progress=None) -> ExportResult:
     """Export a call graph via objdump. `name_map` (optional) maps vaddr ->
     recovered name (e.g. from the unstripped build's `nm`); without it,
-    functions are named `fn_<vaddr>` (the stripped reality)."""
+    functions are named `fn_<vaddr>` (the stripped reality).
+
+    `progress(done, total)` is called per parsed function chunk when the
+    disassembly is streamed in symbol-sized ranges (chunked mode, used for
+    big binaries); a single whole-file dump is used when no progress hook is
+    supplied."""
+    if progress is not None:
+        # chunked mode: disassemble per symbol range so progress is real.
+        # Requires a symbol table (unstripped); a stripped binary falls
+        # through to the single-dump path (no per-function progress is
+        # possible without symbols — the ingest bar still shows rows).
+        # name_map shape (established API): vaddr -> name
+        syms = sorted(((n, a) for a, n in (name_map or {}).items()),
+                      key=lambda kv: kv[1]) if name_map else []
+        if not syms:
+            import subprocess as _sp
+            nm = _sp.run(["nm", "-S", "--defined-only", str(binary)],
+                         capture_output=True, text=True, timeout=120).stdout
+            for line in nm.splitlines():
+                m = re.match(r"^([0-9a-f]+)\s+([0-9a-f]+)\s+[Tt]\s+(.+)$", line)
+                if m:
+                    syms.append((m.group(3), int(m.group(1), 16)))
+            syms.sort(key=lambda kv: kv[1])
+        if not syms:
+            progress(0, 1)  # no symbols: fall through to single-dump mode
+        edges: list[dict] = []
+        seen: set[tuple[str, str]] = set()
+        total = max(len(syms), 1)
+        # PLT trampolines: readelf section headers give .plt's range; targets
+        # inside it are resolved by FR-2 fingerprinting, not walked
+        import subprocess as _sp2
+        sec = _sp2.run(["readelf", "-S", "-W", str(binary)],
+                       capture_output=True, text=True, timeout=30).stdout
+        plt_addrs: set[int] = set()
+        for line in sec.splitlines():
+            if ".plt" in line and "PROGBITS" in line:
+                parts = line.split()
+                paddr, psize = int(parts[4], 16), int(parts[5], 16)
+                plt_addrs |= set(range(paddr, paddr + psize))
+        for idx, (name, start) in enumerate(syms):
+            end = syms[idx + 1][1] if idx + 1 < len(syms) else start + 4096
+            dis = subprocess.run(
+                ["objdump", "-d", f"--start-address=0x{start:x}",
+                 f"--stop-address=0x{end:x}", str(binary)],
+                capture_output=True, text=True, timeout=60).stdout
+            for line in dis.splitlines():
+                if "\tcall" not in line:
+                    continue
+                m = re.search(r"\bcall\s+([0-9a-f]+)\b", line)
+                if not m:
+                    continue
+                tgt = int(m.group(1), 16)
+                if tgt in plt_addrs:
+                    continue
+                tgt_name = (name_map or {}).get(tgt, f"fn_{tgt:x}")
+                edge = {"caller": name, "callee": tgt_name, "kind": "direct"}
+                if edge["caller"] != edge["callee"] and edge not in edges:
+                    edges.append(edge)
+            progress(idx + 1, total)
+        functions = [{"name": n, "address": f"0x{a:x}", "size": 0}
+                     for n, a in syms]
+        return ExportResult(backend="objdump", source_lang="unknown",
+                            functions=functions, edges=edges,
+                            notes=["chunked per-symbol export (progress mode)"])
     dis = subprocess.run(["objdump", "-d", str(binary)],
                          capture_output=True, text=True, timeout=120).stdout
 
