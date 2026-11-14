@@ -41,7 +41,13 @@ Work items:
 
 ### M1 — CEGIS loop on one leaf
 
-**Goal.** One leaf reimplemented and validated end to end, without intervention. **Status:** harness + loop built and verified LLM-free (stub develop closes the seed bug: divergent → counterexample persisted → repair → 2 M execs clean → TRUSTED in ~12 s); real agent runtime pending the LLM gateway.
+**Goal.** One leaf reimplemented and validated end to end, without intervention. **Status:** harness + loop built and verified LLM-free (stub develop closes the seed bug: divergent → counterexample persisted → repair → 2 M execs clean → TRUSTED in ~12 s); real agent runtime pending the LLM gateway. **Source-language adaptation (FR-1 aux) in place** — see below.
+
+- [x] **Source-language detection + adaptation** (added 2026-11-14, applies to every milestone): the pipeline no longer assumes either input language.
+  - **Detector, two tiers** — `humpty/analyze/detect_lang.py`: (1) `elf_language`, a pure-stdlib ELF pre-filter (DT_NEEDED linkage facts, C++-ABI undefined symbols, mangled-name strings — evidence-weighted, auditable, no session needed); (2) **Ghidra as authority**: `analysis/ghidra/DetectSourceLang.java` inspects what Ghidra's analysis recovered (Itanium-mangled symbols, demangled names, RTTI-recovery datatypes, C++-runtime imports) and its verdict **wins** on disagreement, with the disagreement recorded (a silent misadaptation is impossible). `ExportCallGraph.java` now emits `binary.source_lang` in the `fuz.call-graph/1` header, so ingestion carries the verdict; `load_call_graph` honors it (ELF fallback when omitted; bad verdicts rejected).
+  - **Adapter** — `humpty/analyze/adapt.py`: the single place mapping verdict → behavior. C++ turns on RTTI/vtable recovery (FR-1), the STL/Boost/fmt fingerprint corpus (FR-2), the class-layout type registry (FR-12), demangling + prompt notes (FR-4). **The validation machinery (FR-6 harness, FR-7 hooking) is deliberately language-agnostic and carries no switches** — it keys on symbols/addresses.
+  - **Config** — `source_language: auto | c | cpp` (default `auto`), and a `lean_cpp` verdict for C++ built `-fno-rtti -fno-exceptions -fvisibility=hidden` (linkage evidence only, reduced confidence).
+  - 12 detector/adapter tests green (real locally-built C and C++ probes; the Ghidra-tier cross-check exercised with a recorded verdict until the 12.2 zip completes — its download is still proxy-stalled).
 
 - [x] Differential harness (C++/clang, libFuzzer + ASan, persistent mode): original and candidate on the same input, return value compared (FR-6 base). → `horses/src/m1_harness.c` + `build_horse.sh` (original linked from `horse_original.c`, candidate is a drop-in `.so`; ~128k exec/s, over the NFR-3 floor).
 - [ ] Non-determinism neutralization: pin time, randomness, pointer addresses, iteration order; fork server / explicit reset for global state (FR-16). → `horse_reset_before/after` weak hooks in place; exercised M2 (stateful leaves).

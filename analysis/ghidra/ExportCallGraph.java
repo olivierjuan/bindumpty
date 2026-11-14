@@ -32,6 +32,8 @@ import ghidra.program.model.symbol.DemanglerManager;
 import ghidra.program.model.symbol.Reference;
 import ghidra.program.model.symbol.References;
 import ghidra.program.model.symbol.SourceType;
+import ghidra.program.model.symbol.Symbol;
+import ghidra.program.model.data.DataType;
 import ghidra.program.util.ProgramUtilities;
 import ghidra.util.task.TaskMonitor;
 
@@ -69,6 +71,19 @@ public class ExportCallGraph extends GhidraScript {
         boolean isPie = currentProgram.getLanguage().isLittleEndian() &&
                 String.valueOf(currentProgram.getImageBase()).startsWith("0x");
         boolean isStripped = hasOnlyAutoLabels();
+        // Source-language detection (FR-1 aux): Ghidra's own analysis is the
+        // authority. Itanium-mangled symbols / C++ runtime imports / demangled
+        // names prove C++; their absence (with plain symbols) means C.
+        // Verdict feeds the pipeline adapter (humpty/analyze/detect_lang.py).
+        String srcLang = detectSourceLang();
+        // Also emit the standalone verdict JSON when an output path is given
+        // (second script arg), so the two-tier detector can cross-check.
+        String langOutPath = state.length >= 2 ? state[1] : null;
+        if (langOutPath != null) {
+            try (FileWriter lw = new FileWriter(langOutPath)) {
+                lw.write(langVerdictJson);
+            }
+        }
 
         // --- collect functions -------------------------------------------
         List<Function> fns = new ArrayList<>();
@@ -94,7 +109,8 @@ public class ExportCallGraph extends GhidraScript {
           .append("\"arch\": \"").append(arch).append("\",")
           .append("\"kind\": \"elf\",")
           .append("\"is_pie\": ").append(isPie).append(",")
-          .append("\"is_stripped\": ").append(isStripped).append("},\n");
+          .append("\"is_stripped\": ").append(isStripped).append(",")
+          .append("\"source_lang\": "); jso(sb, srcLang); sb.append("},\n");
 
         // --- functions array ---------------------------------------------
         sb.append("  \"functions\": [\n");
@@ -231,6 +247,85 @@ public class ExportCallGraph extends GhidraScript {
         } catch (Exception e) {
             return f.getName();
         }
+    }
+
+    // --- source-language detection (FR-1 aux) ------------------------------
+    // Field set by detectSourceLang(); consumed by the JSON emitter and the
+    // standalone verdict writer.
+    private String langVerdictJson = "{}";
+
+    private String detectSourceLang() {
+        double score = 0.0;
+        List<String> ev = new ArrayList<>();
+
+        // 1. Itanium-mangled symbols anywhere in the program's symbol space.
+        int mangled = 0;
+        String example = null;
+        for (Symbol s : currentProgram.getSymbolTable().getAllSymbols(true)) {
+            String n = s.getName();
+            if (n != null && (n.startsWith("_Z") || n.startsWith("__Z"))) {
+                mangled++;
+                if (example == null) example = n;
+                if (mangled >= 100) break;
+            }
+        }
+        if (mangled >= 1) {
+            score += 3.0;
+            ev.add("mangled_itanium_symbols:" + mangled + " e.g." + example);
+        } else {
+            score -= 0.5;
+            ev.add("no_itanium_mangled_symbols");
+        }
+
+        // 2. C++ runtime imports (undefined external symbols).
+        int cxxImports = 0;
+        for (Symbol s : currentProgram.getSymbolTable().getExternalSymbols()) {
+            String n = s.getName();
+            if (n == null) continue;
+            if (n.startsWith("__gxx") || n.startsWith("__cxa_")
+                    || n.startsWith("_ZT") || n.startsWith("_Zn")
+                    || n.startsWith("_Zd")) {
+                cxxImports++;
+            }
+        }
+        if (cxxImports >= 2) {
+            score += 2.0;
+            ev.add("cxx_runtime_imports:" + cxxImports);
+        } else {
+            score -= 0.5;
+            ev.add("no_cxx_runtime_imports:" + cxxImports);
+        }
+
+        // 3. RTTI recovery artifacts (Ghidra creates these only for C++).
+        int rtti = 0;
+        for (DataType dt : currentProgram.getDataTypeManager().getAllDataTypes()) {
+            String path = dt.getCategoryPath().getPath();
+            if (path != null && path.contains("TypeRecovery")) {
+                rtti++;
+                if (rtti >= 10) break;
+            }
+        }
+        if (rtti >= 10) {
+            score += 3.0;
+            ev.add("ghidra_rtti_recovery_types:" + rtti);
+        }
+
+        String verdict = score >= 2.0 ? "cpp"
+                : score > 0.0 ? "lean_cpp" : "c";
+        String confidence = Math.abs(score) >= 2.0 ? "high"
+                : Math.abs(score) >= 1.0 ? "medium" : "low";
+        StringBuilder json = new StringBuilder();
+        json.append("{\"verdict\":\"").append(verdict)
+            .append("\",\"score\":").append(score)
+            .append(",\"confidence\":\"").append(confidence)
+            .append("\",\"evidence\":[");
+        for (int i = 0; i < ev.size(); i++) {
+            if (i > 0) json.append(",");
+            jso(json, ev.get(i));
+        }
+        json.append("]}");
+        langVerdictJson = json.toString();
+        return verdict;
     }
 
     // --- Tarjan SCC -------------------------------------------------------

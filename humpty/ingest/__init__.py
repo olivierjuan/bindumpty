@@ -64,6 +64,10 @@ class Graph:
     edges: list[tuple[int, int, str]]
     topological_order: list[int]  # db ids, callees before callers
     scc_ids: dict[int, int]  # function db id -> scc id (recursion groups)
+    # Source-language verdict driving the pipeline adapter ("c" | "cpp" |
+    # "lean_cpp"); detected per binary (Ghidra authority, ELF pre-filter
+    # fallback) — see humpty.analyze.detect_lang.
+    source_lang: str = "c"
 
 
 def strongly_connected_components(
@@ -200,6 +204,24 @@ def load_call_graph(session: Session, *, json_path: str | Path, binary: str | Pa
 
     sha = binary_sha256(binary)
 
+    # Source-language verdict (FR-1 aux): prefer the binary header's
+    # source_lang (Ghidra's authority, emitted by ExportCallGraph.java);
+    # fall back to the ELF pre-filter scan when the header omits it. The
+    # pre-filter requires a real ELF64; anything else (a unit-test fake, a
+    # non-x86 object) keeps the verdict undetermined rather than failing the
+    # load — detection is an enhancement, never a gate.
+    from humpty.analyze.detect_lang import elf_language
+
+    header = data.get("binary", {})
+    src_lang = header.get("source_lang")
+    if src_lang is None:
+        try:
+            src_lang = elf_language(binary).verdict
+        except (ValueError, OSError):
+            src_lang = "c"
+    elif src_lang not in ("c", "cpp", "lean_cpp"):
+        raise CallGraphError(f"binary.source_lang: bad verdict {src_lang!r}")
+
     # --- functions ------------------------------------------------------
     ids: dict[str, int] = {}
     nodes: list[int] = []
@@ -261,4 +283,5 @@ def load_call_graph(session: Session, *, json_path: str | Path, binary: str | Pa
     order = call_graph_topo_order(nodes, [(a, b) for a, b, _ in edges], sccs=sccs)
 
     session.flush()
-    return Graph(functions=ids, edges=edges, topological_order=order, scc_ids=scc_ids)
+    return Graph(functions=ids, edges=edges, topological_order=order,
+                 scc_ids=scc_ids, source_lang=src_lang)

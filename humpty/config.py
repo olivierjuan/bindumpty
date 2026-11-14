@@ -56,6 +56,18 @@ class Config:
     # indivisible | unroll
     scc_policy: str = "indivisible"
 
+    # --- source-language adaptation (FR-1 aux) --------------------------
+    # How the detector's verdict is obtained and honored:
+    #   auto       detect per binary (Ghidra verdict if available, else the
+    #              ELF pre-filter) and adapt the pipeline accordingly
+    #   c / cpp    force the language (skip detection — for known inputs)
+    # The adaptation map: what turns on for "cpp" inputs.
+    #   - FR-1: Ghidra analyzer options for RTTI/vtable recovery
+    #   - FR-2: C++ library corpus (STL/Boost/fmt) in fingerprinting
+    #   - FR-12: class-layout registry instead of C structs only
+    # "c" inputs: direct calls only, plain symbols, C struct registry.
+    source_language: str = "auto"
+
     # --- graveyard (open decision, decide by M3) ------------------------
     # Pareto score weights: higher is better. simplicity = lower cyclomatic
     # complexity / fewer tokens. Retention: keep the Pareto front, drop
@@ -91,6 +103,8 @@ class Config:
             raise ConfigError("memory_diff_granularity: all_written | regions_under_this")
         if self.scc_policy not in ("indivisible", "unroll"):
             raise ConfigError("scc_policy: indivisible | unroll")
+        if self.source_language not in ("auto", "c", "cpp"):
+            raise ConfigError("source_language: auto | c | cpp")
         if not 0.0 <= self.trusted_min_coverage <= 1.0:
             raise ConfigError("trusted_min_coverage must be in [0, 1]")
 
