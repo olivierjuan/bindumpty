@@ -26,6 +26,7 @@ dev = [
     "ruff",
     "mypy",
     "pdoc",   # quick local API reference (the site uses mkdocs-material)
+    "litellm",               # multi-provider LLM router (FR-4 providers)
     "mkdocs-material",       # documentation site (docs.yml workflow)
     "mkdocstrings[python]",  # API pages from docstrings
     "mkdocs-gen-files",
