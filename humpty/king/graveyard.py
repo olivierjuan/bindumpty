@@ -27,12 +27,16 @@ from humpty.db.models import Candidate, Counterexample, Function, Graveyard, Tra
 __all__ = ["archive_candidate", "seed_for", "pareto_front", "ParetoEntry"]
 
 
-def _score_vector(session: Session, *, function_id: int, source: str,
+def _score_vector(session: Session | None, *, function_id: int, source: str,
                   weights: dict | None = None) -> dict:
-    fn = session.get(Function, function_id)
-    traces = session.query(Trace).filter(Trace.function_id == function_id).count()
-    ces = session.query(Counterexample).filter(
-        Counterexample.function_id == function_id).count()
+    fn = session.get(Function, function_id) if session is not None else None
+    if session is not None:
+        traces = session.query(Trace).filter(
+            Trace.function_id == function_id).count()
+        ces = session.query(Counterexample).filter(
+            Counterexample.function_id == function_id).count()
+    else:
+        traces = ces = 0
     # v0 scoring from persisted evidence only:
     #   trace_pass_rate: 1.0 when no recorded traces exist yet (nothing failed)
     trace_rate = 1.0 if traces == 0 else max(0.0, 1.0 - ces / max(traces, 1))
