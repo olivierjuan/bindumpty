@@ -261,6 +261,12 @@ def main(argv: list[str] | None = None) -> int:
     ]
     tt = TodoTree(console, groups)
 
+    export_ticks = []
+
+    def _export_progress(done, total):
+        # objdump/rizin chunked mode: real per-symbol progress
+        export_ticks.append((done, total))
+
     from humpty.king.steps import step as step_ctx
     with tt:
         with step_ctx(console, f"export call graph ({args.backend})") as st:
@@ -289,8 +295,11 @@ def main(argv: list[str] | None = None) -> int:
                     raise RuntimeError(
                         f"ghidra export failed rc={proc.returncode}")
             else:
-                cg_path = _graph_for(args, trees)
+                cg_path = _graph_for(args, trees, progress=_export_progress)
             tt.finish_phase("I", "backend run")
+            if export_ticks:
+                tt.message(f"backend progress: {export_ticks[-1][0]}/"
+                           f"{export_ticks[-1][1]} symbols disassembled")
             tt.finish_phase("I", "post-script")
             tt.finish_phase("I", "graph written")
 
@@ -343,13 +352,13 @@ def main(argv: list[str] | None = None) -> int:
     return 0 if not rep.failed else 1
 
 
-def _graph_for(args, trees) -> str:
+def _graph_for(args, trees, progress=None) -> str:
     """Produce a fuz.call-graph/1 file covering the selected subtrees via the
     chosen backend."""
     from analysis.exporters import export_with
 
     out = os.path.join(tempfile.mkdtemp(prefix="bindumpty-cg-"), "cg.json")
-    export_with(args.backend, args.binary, out)
+    export_with(args.backend, args.binary, out, progress=progress)
     return out
 
 

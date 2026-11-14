@@ -29,7 +29,8 @@ _FUNC_RE = re.compile(r"^0x([0-9a-f]+)\s+\d+\s+\d+\s+(?:->\s+\d+\s+)?(\S+)")
 
 
 def rizin_call_graph(binary: str | Path,
-                     name_map: dict[int, str] | None = None) -> ExportResult:
+                     name_map: dict[int, str] | None = None,
+                     progress=None) -> ExportResult:
     """Export a call graph via rizin. `name_map` (optional) overrides names
     for known functions (same semantics as the objdump backend)."""
     if not RIZIN.exists():
@@ -72,7 +73,10 @@ def rizin_call_graph(binary: str | Path,
 
     edges: list[dict] = []
     seen: set[tuple[str, str]] = set()
-    for a in func_starts:
+    total = max(len(func_starts), 1)
+    for i, a in enumerate(func_starts):
+        if progress is not None:
+            progress(i, total)
         tgt_name = fn_name(a)
         out = rz(f"aaa; axtq @ 0x{a:x}")
         for line in out.splitlines():
@@ -91,6 +95,8 @@ def rizin_call_graph(binary: str | Path,
             edges.append({"caller": caller_name, "callee": tgt_name,
                           "kind": "direct"})
 
+    if progress is not None:
+        progress(total, total)
     return ExportResult(
         backend="rizin", source_lang="unknown", functions=functions,
         edges=edges,

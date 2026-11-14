@@ -153,12 +153,13 @@ def _objdump_write(binary: str | Path, out_json: str | Path,
     return _write_out(res, out_json, h)
 
 
-def _rizin_write(binary: str | Path, out_json: str | Path) -> ExportResult:
+def _rizin_write(binary: str | Path, out_json: str | Path,
+                 progress=None) -> ExportResult:
     import hashlib
 
     from .rizin_export import rizin_call_graph
 
-    res = rizin_call_graph(binary)
+    res = rizin_call_graph(binary, progress=progress)
     h = hashlib.sha256(Path(binary).read_bytes()).hexdigest()
     return _write_out(res, out_json, h)
 
