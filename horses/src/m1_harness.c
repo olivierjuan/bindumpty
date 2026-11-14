@@ -58,6 +58,39 @@ static void init_candidate(void) {
 __attribute__((weak)) void horse_reset_before(void) {}
 __attribute__((weak)) void horse_reset_after(void) {}
 
+/* FR-16: neutralize nondeterminism sources inside the process. A stateful
+ * leaf calling time()/rand()/getenv() must see pinned values, or the fuzzer
+ * reports false divergences (original and candidate may observe different
+ * wall-clock ticks). These weak defaults pin what a leaf can observe; a leaf
+ * needing real time overrides them. */
+#include <time.h>
+#include <stdlib.h>
+
+static const char *kPinnedEpoch = "1700000000"; /* 2023-11-14T22:13:20Z */
+
+__attribute__((weak)) time_t horse_time(time_t *t) {
+    time_t pinned = (time_t)1700000000;
+    if (t) *t = pinned;
+    return pinned;
+}
+
+__attribute__((weak)) unsigned horse_seed_default(void) { return 0xC0FFEEu; }
+
+__attribute__((weak)) const char *horse_env(const char *name) {
+    (void)name;
+    return NULL; /* environment invisible to leaves by default */
+}
+
+/* Interpose only when the leaf is linked against these symbols directly and
+ * the strong definitions above are overridden is NOT how weak works — leaves
+ * call time()/rand() themselves, so we provide strong defs guarded by
+ * HORSE_PIN_NONDET (default on) to make interposition explicit and
+ * overridable at build time. */
+#if defined(HORSE_PIN_NONDET)
+time_t time(time_t *t) { return horse_time(t); }
+const char *getenv(const char *name) { return horse_env(name); }
+#endif
+
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     horse_reset_before();
     uint32_t got = g_cand(data, size);
