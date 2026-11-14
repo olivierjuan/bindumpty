@@ -39,10 +39,10 @@ callees are trusted; *proven* only via equivalence checking (FR-11).
 | M | Objective | Status |
 | --- | --- | --- |
 | M0 | Infrastructure and ground truth (sandbox, schema, ingestion, record-replay) | **done** — all five spikes S1–S5 run and documented |
-| M1 | CEGIS loop on one leaf | **core built** — differential harness + CEGIS loop verified LLM-free (seed bug closed end to end); live agent A/B pending the LLM gateway |
-| M2 | Climbing the tree (hybrid harness, hooking, fingerprinting, memory diff) | not started |
-| M3 | Parallelization and orchestration (queue, event bus, scheduler, graveyard) | not started |
-| M4 | Strong validation (LLM-vs-LLM, Alive2/Z3, information-gain scheduling) | not started |
+| M1 | CEGIS loop on one leaf | **done** — exit criterion executed (`humpty/king/m1_exit.py`) |
+| M2 | Climbing the tree (hybrid harness, hooking, fingerprinting, memory diff) | **done** — exit criterion executed (`humpty/king/m2_exit.py`) |
+| M3 | Parallelization and orchestration (queue, event bus, scheduler, graveyard) | **done** — queue/bus/pools/demotion live-verified on PG16; SLURM campaign run needs a SLURM cluster |
+| M4 | Strong validation (LLM-vs-LLM, equivalence proof, information-gain scheduling) | **done** — exit criterion executed (`humpty/king/m4_exit.py`) |
 
 Current: **72 tests passing** (`python -m pytest`).
 
