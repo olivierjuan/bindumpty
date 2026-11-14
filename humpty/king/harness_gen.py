@@ -130,9 +130,9 @@ def generate_harness(cg_json: str | Path, binary: str | Path,
         ret, args = sig
         arg_decl = ", ".join(f"{t} a{i}" for i, t in enumerate(args)) or "void"
         arg_use = ", ".join(f"a{i}" for i in range(len(args))) or ""
-        protos.append(f"static {ret} (*g_{name})({arg_decl});")
+        protos.append(f"static {ret} (*g_orig_{name})({arg_decl});")
         resolves.append(
-            f'    g_{name} = ({ret} (*)({", ".join(args) or "void"}))'
+            f'    g_orig_{name} = ({ret} (*)({", ".join(args) or "void"}))'
             f'(void *)resolve_original(0x{int(f["address"], 16):x}, "{name}");')
         supported.append(name)
 
@@ -144,7 +144,9 @@ def generate_harness(cg_json: str | Path, binary: str | Path,
     if root_symbol:
         f = fns.get(root_symbol, {})
         sig = _parse_sig(f.get("demangled_sig"))
-        cand_decl = (f"int cand_{root_symbol}(const uint8_t *data, "
+        # the candidate TU defines the root function under its real name;
+        # declare it so the harness's compare loop links cleanly
+        cand_decl = (f"uint32_t {root_symbol}(const uint8_t *data, "
                      "size_t size);\n")
         if sig:
             ret, args = sig
@@ -153,8 +155,9 @@ def generate_harness(cg_json: str | Path, binary: str | Path,
             if len(args) == 2 and "uint8_t" in args[0]:
                 root_compare = (
                     "\nint LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {\n"
-                    f"    uint32_t got = {cand_sym}(data, size);\n"
-                    f"    uint32_t want = g_{root_symbol}(data, size);\n"
+                    f"    uint32_t got = {root_symbol}(data, size);  "
+                    "/* candidate TU defines this name */\n"
+                    f"    uint32_t want = g_orig_{root_symbol}(data, size);\n"
                     "    if (got != want) {\n"
                     '        fprintf(stderr, "HORSE DIVERGENCE len=%zu input=", size);\n'
                     "        for (size_t i = 0; i < size && i < 4096; i++) "

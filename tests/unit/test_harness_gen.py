@@ -31,7 +31,7 @@ def test_generate_root_scoped(tmp_path):
     # root + transitive callees only
     assert set(res.functions) == {"checksum_block", "fnv1a", "digit_sum_u32"}
     src = res.harness_c.read_text()
-    assert "static uint32_t (*g_checksum_block)(" in src  # fn-pointer decl
+    assert "static uint32_t (*g_orig_checksum_block)(" in src  # fn-pointer decl
     assert "resolve_original(0x1240" in src
     assert "resolve_original(0x11d0" in src
     assert "dlopen(" in src
