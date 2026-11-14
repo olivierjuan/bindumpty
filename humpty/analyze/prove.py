@@ -44,7 +44,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass, field
 
-__all__ = ["prove_fnv1a", "ProofResult", "step_ir_signature"]
+__all__ = ["prove_fnv1a", "ProofResult"]
 
 BASIS = 2166136261
 PRIME = 16777619

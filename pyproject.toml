@@ -25,6 +25,7 @@ dev = [
     "pytest-asyncio",
     "ruff",
     "mypy",
+    "pdoc",   # API reference generation (docs.yml workflow)
 ]
 
 [tool.pytest.ini_options]

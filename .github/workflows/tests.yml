@@ -1,0 +1,99 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system deps (clang for the harness, psql client tools)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang postgresql-client
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Build the toy binaries (cases are the validation baseline)
+        run: |
+          ./toys/case-01-leaf/build.sh
+          ./toys/case-02-mem/build.sh
+
+      - name: Run the test suite
+        run: python -m pytest -q
+
+      - name: Funchook build cache key check (vendored, capstone backend)
+        run: |
+          test -f horses/third_party/funchook/PIN.txt
+          grep -q "capstone" horses/third_party/funchook/PIN.txt
+
+  orchestration:
+    runs-on: ubuntu-latest
+    needs: pytest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: humpty
+          POSTGRES_DB: humpty
+        ports:
+          - 55433:5432
+        options: >-
+          --health-cmd "pg_isready -U humpty"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: |
+          sudo apt-get update && sudo apt-get install -y clang
+          pip install -e ".[dev]"
+
+      - name: FR-14 queue + FR-17 bus live check (the M3 machinery)
+        run: |
+          ./toys/case-01-leaf/build.sh
+          .venv/bin/python - <<'PY'
+          from sqlalchemy import create_engine, text
+          from sqlalchemy.orm import sessionmaker
+          from humpty.king.queue import Queue
+
+          URL = "postgresql+psycopg://humpty:humpty@127.0.0.1:55433/humpty"
+          eng = create_engine(URL)
+          q = Queue(sessionmaker(bind=eng), worker_id="ci", url=URL)
+          q.ensure_schema(eng)
+          with eng.connect() as c:
+              c.execute(text("DELETE FROM king_jobs")); c.commit()
+          with sessionmaker(bind=eng)() as s:
+              for i in range(50):
+                  q.push(s, kind="fuzz", payload={"n": i})
+              s.commit()
+          import threading
+          claimed, lock = [], threading.Lock()
+          def worker(wid):
+              qw = Queue(sessionmaker(bind=eng), worker_id=wid, url=URL)
+              while True:
+                  c = qw.claim(kinds=("fuzz",))
+                  if c is None: break
+                  with lock: claimed.append(c.job_id)
+                  qw.complete(c.job_id)
+          ts = [threading.Thread(target=worker, args=(f"w{i}",)) for i in range(8)]
+          [t.start() for t in ts]
+          [t.join() for t in ts]
+          assert len(claimed) == 50 and len(set(claimed)) == 50, "dupes or lost!"
+          print(f"queue OK: {len(claimed)} claimed, all unique")
+          PY

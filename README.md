@@ -1,5 +1,9 @@
 # bindumpty
 
+[![tests](https://github.com/olivierjuan/bindumpty/actions/workflows/tests.yml/badge.svg)](https://github.com/olivierjuan/bindumpty/actions/workflows/tests.yml)
+[![milestone exits](https://github.com/olivierjuan/bindumpty/actions/workflows/exits.yml/badge.svg)](https://github.com/olivierjuan/bindumpty/actions/workflows/exits.yml)
+[![docs](https://github.com/olivierjuan/bindumpty/actions/workflows/docs.yml/badge.svg)](https://github.com/olivierjuan/bindumpty/actions/workflows/docs.yml)
+
 Reconstructs readable, behaviorally equivalent **C** source from a stripped,
 non-obfuscated x86-64 C++ binary, one function at a time, bottom-up from the
 call-tree leaves.
