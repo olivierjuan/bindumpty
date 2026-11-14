@@ -129,9 +129,7 @@ class Shell:
             return
         name = args[0]
         depth = int(args[1]) if len(args) > 1 else None
-        if depth and depth > 64:
-            self.console.print(f"[yellow]depth {depth} clamped to 64[/yellow]")
-            depth = 64
+        # depth honored as given: BFS terminates at the real graph height
         # accept raw hex addresses on stripped binaries: anchor fn_<vaddr>
         if name not in self.symbols:
             try:

@@ -157,10 +157,9 @@ def main(argv: list[str] | None = None) -> int:
         symbols = load_symbols(args.binary)
     console.print(f"[blue]{len(symbols)} defined symbols loaded[/blue]")
 
-    if args.depth > 64:
-        console.print(f"[yellow]depth {args.depth} clamped to 64 "
-                      f"(call graphs deeper than that are pathological)[/yellow]")
-        args.depth = 64
+    # depth is honored as given: BFS terminates at the real call-graph
+    # height (seen-set prevents cycles), so a large depth is harmless — it
+    # means "walk to the leaves". No clamp.
     roots = args.symbol or [n for n, s in symbols.items() if n == "main"] or []
     if not roots:
         console.print("[red]no --symbol given and no `main` found. "
