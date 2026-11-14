@@ -10,6 +10,13 @@ CC=${CC:-clang}
 # Unstripped: same codegen, symbols retained for call-graph extraction.
 $CC -O1 -fno-omit-frame-pointer -o build/toy01.sym sources/toy01.c
 
+# Shared-object variant for the M2 hybrid harness (FR-6/FR-7): the harness
+# dlopens it and resolves originals by SYMBOL (dlsym) instead of by vaddr.
+# The ground-truth vaddrs stay tied to build/toy01 (the M2 exit binary);
+# toy01.so carries the same source built PIC. Names resolve via dlsym, so no
+# address bookkeeping is needed here.
+$CC -O1 -fno-omit-frame-pointer -fPIC -shared -o build/toy01.so sources/toy01_impl.c
+
 # Stripped: the actual target. Addresses are unchanged by strip --strip-all
 # (only the symbol/string tables are removed), so ground-truth addresses from
 # the .sym build remain valid for the stripped binary.

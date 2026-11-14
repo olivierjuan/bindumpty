@@ -10,3 +10,23 @@ uint32_t fnv1a(const uint8_t *data, size_t len) {
     }
     return hash;
 }
+
+/* M2 additions: the candidate's own leaf 2 + parent over the candidate
+ * leaves. Same shape as the original; the CEGIS loop replaces these with
+ * the agent's sources. */
+int digit_sum_u32(uint32_t x) {
+    int s = 0;
+    do {
+        s += (int)(x % 10u);
+        x /= 10u;
+    } while (x != 0u);
+    return s;
+}
+
+uint32_t checksum_block(const uint8_t *data, size_t len) {
+    size_t half = len / 2;
+    uint32_t h1 = fnv1a(data, half);
+    uint32_t h2 = fnv1a(data + half, len - half);
+    uint32_t mix = h1 ^ (h2 * 2654435761u);
+    return mix ^ (uint32_t)digit_sum_u32(mix);
+}
