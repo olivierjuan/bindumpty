@@ -1,0 +1,92 @@
+site_name: bindumpty
+site_description: >-
+  Reconstruct readable, behaviorally equivalent C source from a stripped
+  x86-64 binary — CEGIS: an LLM proposes, a differential fuzzer verifies,
+  counterexamples drive the repair.
+site_url: https://olivierjuan.github.io/bindumpty/
+repo_url: https://github.com/olivierjuan/bindumpty
+repo_name: olivierjuan/bindumpty
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  features:
+    - navigation.instant
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.tabs.link
+    - announce.dismiss
+  icon:
+    repo: fontawesome/brands/github
+
+nav:
+  - Home: index.md
+  - Getting started: getting_started.md
+  - Pipeline:
+      - Architecture: pipeline/architecture.md
+      - Function lifecycle: pipeline/lifecycle.md
+      - Validation: pipeline/validation.md
+  - Reference:
+      - API (mkdocstrings): reference/api.md
+      - Call-graph format: reference/call_graph_format.md
+      - Trace bundle format: reference/trace_format.md
+      - Configuration: reference/configuration.md
+  - Milestones: milestones.md
+  - Spec: whitepapers.md
+
+plugins:
+  - search
+  - gen-files:
+      scripts:
+        - docs/gen_ref_pages.py
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            heading_level: 2
+            members_order: source
+            filters:
+              - "!^_"
+  - minify:
+      minify_html: true
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.arithmatex
+  - tables
+  - toc:
+      permalink: true
+
+watch:
+  - humpty
+  - docs

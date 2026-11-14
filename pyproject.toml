@@ -25,7 +25,11 @@ dev = [
     "pytest-asyncio",
     "ruff",
     "mypy",
-    "pdoc",   # API reference generation (docs.yml workflow)
+    "pdoc",   # quick local API reference (the site uses mkdocs-material)
+    "mkdocs-material",       # documentation site (docs.yml workflow)
+    "mkdocstrings[python]",  # API pages from docstrings
+    "mkdocs-gen-files",
+    "mkdocs-minify-plugin",
 ]
 
 [tool.pytest.ini_options]

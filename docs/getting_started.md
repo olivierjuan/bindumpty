@@ -10,7 +10,7 @@ equivalence checking.
 
 This guide gets you from a clean clone to a validated leaf in ~10 minutes.
 Everything below was executed on the commit you are reading (see
-[ROADMAP.md](ROADMAP.md) for what each milestone's exit criterion proves).
+[milestones](milestones.md) for what each milestone's exit criterion proves).
 
 ---
 

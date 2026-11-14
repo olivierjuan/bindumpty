@@ -17,50 +17,28 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install deps (pdoc for the API reference)
+      - name: Install deps
         run: |
+          sudo apt-get update && sudo apt-get install -y clang
           pip install -e ".[dev]"
-          pip install pdoc
+          pip install "mkdocs-material" "mkdocstrings[python]" \
+                      mkdocs-gen-files mkdocs-minify-plugin
 
-      - name: Build the toys (so module import in pdoc sees built artifacts)
+      - name: Build the toys (modules read built artifacts at import time)
         run: |
           ./toys/case-01-leaf/build.sh
           ./toys/case-02-mem/build.sh
 
-      - name: Generate the API reference (pdoc)
-        env:
-          # ROOT constants in the modules match $PWD — keep pdoc from redacting
-          PDOC_DISPLAY_ENV_VARS: "0"
-        run: |
-          python -m pdoc humpty -o docs/_site/api
-          # fail the job on any pdoc warning (e.g. stale __all__ entries)
-          python -m pdoc humpty --output-dir docs/_site/api 2>&1 | grep -E "^Warn" && \
-            { echo "pdoc warnings are errors"; exit 1; } || true
+      - name: Generate the API reference pages
+        run: python docs/gen_ref_pages.py
 
-      - name: Assemble the docs site
-        run: |
-          mkdir -p docs/_site
-          cp docs/getting_started.md docs/_site/getting_started.md
-          cp README.md docs/_site/readme.md
-          cp ROADMAP.md docs/_site/roadmap.md
-          cp WHITEPAPERS.md docs/_site/whitepapers.md
-          # a tiny index that links everything (no site generator dependency)
-          cat > docs/_site/index.html <<'HTML'
-          <!doctype html><meta charset="utf-8"><title>bindumpty docs</title>
-          <h1>bindumpty</h1>
-          <ul>
-            <li><a href="getting_started.md">Getting started</a></li>
-            <li><a href="api/humpty.html">API reference (pdoc)</a></li>
-            <li><a href="roadmap.md">Roadmap</a></li>
-            <li><a href="whitepapers.md">Whitepapers (spec)</a></li>
-            <li><a href="readme.md">README</a></li>
-          </ul>
-          HTML
+      - name: Build the site (strict: warnings are errors)
+        run: python -m mkdocs build --strict
 
       - name: Publish to gh-pages
         if: github.ref == 'refs/heads/main'
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: docs/_site
+          publish_dir: site
           force_orphan: true
