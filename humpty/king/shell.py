@@ -46,6 +46,7 @@ class Shell:
         self.fuzz_budget = fuzz_budget
         self.max_iter = max_iter
         self.depth = depth
+        self.exclude: list[str] = []
         self.db = db
         self.console = Console()
         self.symbols: dict = {}
@@ -85,7 +86,7 @@ class Shell:
                                                  vaddr=int(name[3:], 16) if name.startswith("fn_") else 0,
                                                  size=0))
         return subtree(self.binary, name, depth=depth or self.depth,
-                       symbols=self.symbols)
+                       symbols=self.symbols, exclude=self.exclude)
 
     def _render_tree(self, name: str, depth: int | None = None) -> None:
         from rich.tree import Tree
@@ -205,6 +206,19 @@ class Shell:
         except ValueError:
             self.console.print(f"[red]bad value for {key}: {val!r}[/red]")
 
+    def cmd_exclude(self, args: list[str]) -> None:
+        """exclude [PATTERN ...] — stop traversal at matching symbols.
+        With no args, lists and clears the current patterns."""
+        if not args:
+            if self.exclude:
+                self.console.print(f"[blue]exclude patterns: {self.exclude}[/blue]")
+            else:
+                self.console.print("[blue]no exclude patterns[/blue]")
+            self.exclude = []
+            return
+        self.exclude = args
+        self.console.print(f"[green]exclude: {self.exclude}[/green]")
+
     def cmd_llm(self, args: list[str]) -> None:
         self.console.print(self._llm_status())
 
@@ -296,6 +310,7 @@ class Shell:
         "select": "select NAME ... — set reconstruction roots",
         "show": "show current settings and selection",
         "set": "set horses/men/fuzz/max-iter/backend/depth",
+        "exclude": "exclude [PATTERN ...] — stop traversal at matches",
         "llm": "check the LLM endpoint",
         "provider": "provider [NAME] [MODEL] — switch the LLM provider",
         "run": "start the CEGIS run on the selected roots",

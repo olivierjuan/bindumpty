@@ -60,6 +60,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--model", help="model id for the provider")
     ap.add_argument("--api-base", help="OpenAI-compatible base URL "
                  "(for modal/vllm/self-hosted endpoints)")
+    ap.add_argument("--exclude", action="append", default=[],
+                    help="regex: stop call-tree traversal at matching "
+                         "symbols (e.g. --exclude 'mkl_.*' --exclude 'CPX.*')")
     ap.add_argument("--list", action="store_true",
                     help="show the symbol tree and exit (no run)")
     ap.add_argument("--yes", action="store_true",
@@ -142,6 +145,8 @@ _prov_args: dict = {}
 def main(argv: list[str] | None = None) -> int:
     from rich.console import Console
 
+    from rich.tree import Tree  # verdict rendering
+
     console = Console()
     args = build_arg_parser().parse_args(argv)
     _prov_args.update(provider=args.provider, model=args.model,
@@ -191,7 +196,7 @@ def main(argv: list[str] | None = None) -> int:
     for root in roots:
         try:
             trees[root] = subtree(args.binary, root, depth=args.depth,
-                                  symbols=symbols)
+                                  symbols=symbols, exclude=args.exclude)
         except KeyError as e:
             console.print(f"[red]{e}[/red]")
             return 2
@@ -246,9 +251,31 @@ def main(argv: list[str] | None = None) -> int:
     factory = make_session_factory(eng)
     sha = binary_sha256(args.binary)
 
-    with console.status("[blue]ingesting call graph..."):
-        with session_scope(factory) as s:
-            load_call_graph(s, json_path=_graph_for(args, trees), binary=args.binary)
+    with console.status("[blue]ingesting call graph...") as st:
+        cg_path = _graph_for(args, trees)
+        st.update(f"[blue]call graph produced — inserting into the DB...[/blue]")
+
+        from rich.progress import (BarColumn, Progress, TaskProgressColumn,
+                                   TextColumn, TimeElapsedColumn)
+        with Progress(TextColumn("  [blue]ingest[/blue] {task.description}"),
+                      BarColumn(), TaskProgressColumn(),
+                      TimeElapsedColumn(), console=console,
+                      transient=True) as prog:
+            tasks = {}
+
+            def on_progress(stage, done, total):
+                key = f"{stage} ({total} rows)"
+                if key not in tasks:
+                    tasks[key] = prog.add_task(key, total=total)
+                prog.update(tasks[key], completed=done)
+
+            with session_scope(factory) as s:
+                load_call_graph(s, json_path=cg_path, binary=args.binary,
+                                progress=on_progress)
+        st.stop()
+    console.print(f"[blue]ingested [b]{_graph_for.__name__}[/b][/blue]"
+                  if False else
+                  "[blue]call graph ingested[/blue]")
 
     from humpty.men.providers import make_develop
     develop = make_develop(spec)

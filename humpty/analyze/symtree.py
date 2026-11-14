@@ -131,8 +131,16 @@ def _containing(syms: list[Symbol], addr: int) -> Symbol | None:
 
 
 def subtree(elf: str, root: str, depth: int = 3,
-            symbols: dict[str, Symbol] | None = None) -> SymTree:
-    """BFS the call subtree rooted at `root` up to `depth` levels."""
+            symbols: dict[str, Symbol] | None = None,
+            exclude: list[str] | None = None) -> SymTree:
+    """BFS the call subtree rooted at `root` up to `depth` levels.
+
+    ``exclude``: regexes. A function whose name matches ANY of them stops
+    traversal there — its node appears (marked excluded) but its callees are
+    not walked. Typical use: vendor/library internals (mkl_*, CPX*,
+    sqlite3*) that the pipeline will fingerprint (FR-2) instead of
+    reimplement.
+    """
     all_syms = list(symbols.values()) if symbols else list(load_symbols(elf).values())
     by_name = {s.name: s for s in all_syms}
     if root not in by_name:
@@ -140,6 +148,11 @@ def subtree(elf: str, root: str, depth: int = 3,
 
     tree = SymTree(root=root)
     seen_names = {root}
+    excl_res = [re.compile(x) for x in (exclude or [])]
+
+    def excluded(name: str) -> bool:
+        return any(r.search(name) for r in excl_res)
+
     frontier = [by_name[root]]
 
     # zero-size anchors (address-selected, stripped-binary pseudo-symbols)
@@ -156,6 +169,8 @@ def subtree(elf: str, root: str, depth: int = 3,
     for level in range(depth):
         nxt: list[Symbol] = []
         for sym in frontier:
+            if excluded(sym.name):
+                continue  # excluded subtree: node shown, callees not walked
             end = _effective_end(sym)
             if end <= sym.vaddr:
                 continue
@@ -172,7 +187,8 @@ def subtree(elf: str, root: str, depth: int = 3,
                 if cont.name not in seen_names:
                     seen_names.add(cont.name)
                     tree.nodes[cont.name] = callee
-                    nxt.append(callee)
+                    if not excluded(cont.name):
+                        nxt.append(callee)
         tree.depth_reached = level + 1
         if not nxt:
             break

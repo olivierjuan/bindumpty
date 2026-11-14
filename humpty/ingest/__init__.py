@@ -194,11 +194,16 @@ def call_graph_topo_order(
     return out
 
 
-def load_call_graph(session: Session, *, json_path: str | Path, binary: str | Path) -> Graph:
+def load_call_graph(session: Session, *, json_path: str | Path, binary: str | Path,
+                    progress=None) -> Graph:
     """Validate and load a call-graph JSON into the given session.
 
     The caller commits (or rolls back) — loading participates in the caller's
     transaction so a partial ingest never commits.
+
+    ``progress`` (optional) is called as ``progress(stage, done, total)``
+    with stage in {"functions", "edges"} — the CLI binds it to a progress
+    bar. Never required; None keeps the signature unchanged.
     """
     data = json.loads(Path(json_path).read_text())
     if data.get("format") != FORMAT:
@@ -238,7 +243,10 @@ def load_call_graph(session: Session, *, json_path: str | Path, binary: str | Pa
     # --- functions ------------------------------------------------------
     ids: dict[str, int] = {}
     nodes: list[int] = []
-    for i, fn in enumerate(data.get("functions", [])):
+    fns_all = data.get("functions", [])
+    for i, fn in enumerate(fns_all):
+        if progress is not None and i % 500 == 0:
+            progress("functions", i, len(fns_all))
         name = _require(fn, "name", f"functions[{i}]")
         addr = int(str(_require(fn, "address", f"functions[{i}]")), 0)
         size = int(_require(fn, "size", f"functions[{i}]"))
@@ -268,7 +276,10 @@ def load_call_graph(session: Session, *, json_path: str | Path, binary: str | Pa
     # --- edges ----------------------------------------------------------
     edges: list[tuple[int, int, str]] = []
     seen_edges: set[tuple[str, str, str]] = set()
-    for i, e in enumerate(data.get("edges", [])):
+    edges_all = data.get("edges", [])
+    for i, e in enumerate(edges_all):
+        if progress is not None and i % 1000 == 0:
+            progress("edges", i, len(edges_all))
         caller = _require(e, "caller", f"edges[{i}]")
         callee = _require(e, "callee", f"edges[{i}]")
         kind = str(e.get("kind", "direct"))
