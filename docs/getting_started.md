@@ -53,6 +53,16 @@ The build script also re-syncs `ground_truth/` (sha256 **and** function
 addresses) with the binary — this is NFR-2 and the regression test
 `test_ground_truth_addresses_match_binary` enforces it.
 
+## 2b. Or use the operator CLI on any binary
+
+```bash
+.venv/bin/python -m humpty.king.cli lpex2 --symbol main --depth 2 --list
+```
+
+Loads the symbol table (17,832 symbols on a 34 MB CPLEX example in 0.2 s),
+renders the run plan + call tree, and reports the honest LLM status. See
+[operator CLI](operator_cli.md).
+
 ## 3. Watch the pipeline validate a leaf (2 minutes)
 
 ```bash

@@ -41,6 +41,7 @@ theme:
 nav:
   - Home: index.md
   - Getting started: getting_started.md
+  - Operator CLI: operator_cli.md
   - Pipeline:
       - Architecture: pipeline/architecture.md
       - Function lifecycle: pipeline/lifecycle.md
