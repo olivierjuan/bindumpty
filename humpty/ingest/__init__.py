@@ -218,7 +218,9 @@ def load_call_graph(session: Session, *, json_path: str | Path, binary: str | Pa
 
     header = data.get("binary", {})
     src_lang = header.get("source_lang")
-    if src_lang is None:
+    if src_lang in (None, "unknown"):
+        # omitted, or a backend that does not detect language (objdump/rizin):
+        # the ELF pre-filter decides (detection is an enhancement, never a gate)
         try:
             src_lang = elf_language(binary).verdict
         except (ValueError, OSError):

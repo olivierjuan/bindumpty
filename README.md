@@ -17,6 +17,14 @@ Three pillars (see [WHITEPAPERS.md](WHITEPAPERS.md) for the full specification):
 A function is *trusted* when no divergence is found within budget and all
 callees are trusted; *proven* only via equivalence checking (FR-11).
 
+## Getting started
+
+**[docs/getting_started.md](docs/getting_started.md)** — from a clean clone
+to a validated leaf in ~10 minutes: setup, the toy build, watching the CEGIS
+loop validate a leaf, running your own binary through the three export
+backends, orchestration with workers, strong validation, and a
+troubleshooting table. Every command in it was executed on this commit.
+
 ## Where to look
 
 | You want… | Look in |

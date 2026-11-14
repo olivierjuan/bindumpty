@@ -83,6 +83,8 @@ def objdump_call_graph(binary: str | Path,
             continue
         edge = {"caller": fn_name(caller_addr), "callee": fn_name(tgt),
                 "kind": "direct"}
+        if edge["caller"] == edge["callee"]:
+            continue  # self-loop: recursion is the SCC policy's business (FR-1)
         if edge not in edges:
             edges.append(edge)
     for site in indirect_sites:
