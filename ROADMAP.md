@@ -92,6 +92,8 @@ Work items:
 - [x] SLURM deployment: `sandbox/slurm/worker_array.sbatch` (array over the queue; NFR-1 — untrusted code in the apptainer sandbox, the worker only orchestrates).
 - [x] Resolve open decision: graveyard retention policy and Pareto score weights — `config.graveyard_pareto_weights` + `graveyard_max_per_function` flow into `humpty/king/graveyard.py` (weights applied per axis at score time; retention keeps the Pareto front and caps per function). Unit-tested.
 
+**SLURM note:** slurmctld + sbatch + munge installed and verified on this host; the slurmd compute daemon cannot start inside this dev container (no dbus/cgroup namespace), so a deployed campaign needs a SLURM cluster. Everything else (template, campaign script, queue) is ready.
+
 **Exit criterion.** Several functions processed and validated in parallel; the demotion path (FR-13) is exercised; graveyard-seeded repair measurably outperforms from-scratch repair on the same functions; an SLURM-deployed campaign completes.
 
 ### M4 — Strong validation and fine scheduling
