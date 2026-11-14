@@ -70,13 +70,24 @@ def main() -> int:
 
     print("[2/4] CEGIS loop (develop seam: deterministic; LLM is swappable)")
     sys.path.insert(0, os.path.join(ROOT, "horses", "src"))
-    from cegis import stub_develop  # noqa: E402
-
     from s4_core import Fnv1aSpec  # noqa: E402
 
-    spec = Fnv1aSpec(randomized_n=0)
+    # hermetic develop: returns the fnv1a-only source (never the shared
+    # candidate file, which other milestone runs may have left in any state)
+    LEAF_SRC = """#include <stdint.h>
+#include <stddef.h>
+uint32_t fnv1a(const uint8_t *data, size_t len) {
+    uint32_t h = 2166136261u;
+    for (size_t i = 0; i < len; i++) { h ^= data[i]; h *= 16777619u; }
+    return h;
+}
+"""
+
+    def develop(spec, counterexample=None):
+        return LEAF_SRC
+
     with session_scope(factory) as s:
-        result = run_leaf_loop(s, function_id=fid, develop=stub_develop,
+        result = run_leaf_loop(s, function_id=fid, develop=develop,
                                max_iter=5, fuzz_budget_s=10,
                                log=lambda m: print(f"  {m}"))
     if not result.get("verified", False) and result.get("state") != "trusted":
