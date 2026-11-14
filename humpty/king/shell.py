@@ -21,6 +21,7 @@ import argparse
 import os
 import shlex
 import sys
+import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
@@ -107,6 +108,8 @@ class Shell:
     # -- commands ------------------------------------------------------------
 
     def cmd_symbols(self, args: list[str]) -> None:
+        if not self.symbols:
+            self._load()
         pattern = args[0] if args else ""
         names = sorted(n for n in self.symbols
                        if pattern.lower() in n.lower())
@@ -118,6 +121,8 @@ class Shell:
                                    + (" (first 200)" if len(names) > 200 else "")))
 
     def cmd_tree(self, args: list[str]) -> None:
+        if not self.symbols:
+            self._load()
         if not args:
             self.console.print("[red]usage: tree NAME|ADDR [DEPTH][/red]")
             return
@@ -140,6 +145,8 @@ class Shell:
             self.console.print(f"[red]symbol {name!r} not found[/red]")
 
     def cmd_select(self, args: list[str]) -> None:
+        if not self.symbols:
+            self._load()
         if not args:
             self.console.print("[red]usage: select NAME|ADDR ...[/red]")
             return
