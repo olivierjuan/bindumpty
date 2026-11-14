@@ -1,0 +1,80 @@
+{
+  "format": "fuz.call-graph/1",
+  "binary": {
+    "sha256": "48d84831e9f765a1e0326549b13a2176aca5772b0b44da306db2cc1dd5b461db",
+    "arch": "x86-64",
+    "kind": "elf",
+    "is_pie": null,
+    "is_stripped": false,
+    "source_lang": "c",
+    "backend": "build-script"
+  },
+  "functions": [
+    {
+      "name": "fill_keystream",
+      "address": "0x0",
+      "size": 0,
+      "demangled_sig": "void fill_keystream(const unsigned char *, unsigned long, unsigned char *, unsigned long)",
+      "has_rtti": false,
+      "is_library": false
+    },
+    {
+      "name": "fnv1a",
+      "address": "0x0",
+      "size": 0,
+      "demangled_sig": null,
+      "has_rtti": false,
+      "is_library": false,
+      "reused_from": "case-01"
+    },
+    {
+      "name": "digit_sum_u32",
+      "address": "0x0",
+      "size": 0,
+      "demangled_sig": null,
+      "has_rtti": false,
+      "is_library": false,
+      "reused_from": "case-01"
+    }
+  ],
+  "edges": [
+    {
+      "caller": "fill_keystream",
+      "callee": "fnv1a",
+      "kind": "direct"
+    },
+    {
+      "caller": "fill_keystream",
+      "callee": "digit_sum_u32",
+      "kind": "direct"
+    }
+  ],
+  "topological_order": [
+    "fnv1a",
+    "digit_sum_u32",
+    "fill_keystream"
+  ],
+  "sccs": [],
+  "io_vectors": [
+    {
+      "seed": "",
+      "len": 0,
+      "expected_hex": "00"
+    },
+    {
+      "seed": "00",
+      "len": 8,
+      "expected_hex": "b7f7b04a4e7dae2400"
+    },
+    {
+      "seed": "deadbeef",
+      "len": 16,
+      "expected_hex": "6b5abd6902e0ba439965b81d30ebb5f700"
+    },
+    {
+      "seed": "a5a5",
+      "len": 33,
+      "expected_hex": "f7cf257b8e55235525db202fbc601e0953e61be3ea6b19bd81f1169718771471af01"
+    }
+  ]
+}
