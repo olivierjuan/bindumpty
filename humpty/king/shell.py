@@ -70,7 +70,8 @@ class Shell:
         except Exception as e:
             return f"[red]{e}[/red]"
         key = os.environ.get(spec.api_key_env) if spec.api_key_env else "present"
-        key_part = f"key {'OK' if key else 'MISSING: ' + spec.api_key_env}"
+        key_part = ("key OK" if key
+                    else f"[red]missing key {spec.api_key_env}[/red]")
         return f"[green]{spec.provider}/{spec.model}[/green] ({key_part})"
 
     def _tree_for(self, name: str, depth: int | None = None):
@@ -128,6 +129,9 @@ class Shell:
             return
         name = args[0]
         depth = int(args[1]) if len(args) > 1 else None
+        if depth and depth > 64:
+            self.console.print(f"[yellow]depth {depth} clamped to 64[/yellow]")
+            depth = 64
         # accept raw hex addresses on stripped binaries: anchor fn_<vaddr>
         if name not in self.symbols:
             try:
