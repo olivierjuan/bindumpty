@@ -156,3 +156,16 @@ class TodoTree:
     def message(self, text: str) -> None:
         self.msgs.append(text)
         self._refresh()
+
+    def feed_ghidra(self, line: str) -> None:
+        """Map an analyzeHeadless stdout line to the matching group-I todo
+        node (☐ → ☑) using the real phase substrings from a 34MB import."""
+        for pattern, label in self._GHIDRA_PHASES:
+            if pattern in line:
+                # find the group-I node whose text mentions this phase
+                for (gid, text), node in self.nodes.items():
+                    if gid == "I" and label.split()[0].lower() in text.lower():
+                        self.start_phase(gid, text)
+                        self.finish_phase(gid, text)
+                        self.message(f"{label} — {line.strip()[:70]}")
+                        return

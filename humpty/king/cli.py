@@ -283,10 +283,7 @@ def main(argv: list[str] | None = None) -> int:
                     stdout=_sp.PIPE, stderr=_sp.STDOUT, text=True,
                     env=env, cwd=ROOT)
                 for line in proc.stdout:
-                    if "ERROR" in line:
-                        tt.message(line.strip()[:160])
-                    elif "REPORT" in line or "Analysis" in line:
-                        tt.message(line.split("(")[0].strip()[:80])
+                    tt.feed_ghidra(line)
                 proc.wait()
                 if proc.returncode != 0:
                     raise RuntimeError(
