@@ -48,6 +48,7 @@ _RET_MAP = {
     "uint32": "uint32_t", "unsigned int": "uint32_t", "uint32_t": "uint32_t",
     "uint64": "uint64_t", "unsigned long": "uint64_t", "uint64_t": "uint64_t",
     "int": "int", "void": "void", "size_t": "size_t",
+    "double": "double", "float": "float",
 }
 _ARG_MAP = {
     "const unsigned char *": "const uint8_t *",
@@ -58,6 +59,11 @@ _ARG_MAP = {
     "size_t": "size_t", "unsigned long long": "uint64_t",
     "int": "int", "uint32": "uint32_t", "uint32_t": "uint32_t",
     "char *": "char *", "void *": "void *", "const void *": "const void *",
+    # Fortran-ABI pointer args (BLAS/LAPACK wrappers)
+    "const int *": "const int *", "int *": "int *",
+    "const double *": "const double *", "double *": "double *",
+    "const float *": "const float *", "float *": "float *",
+    "const char *": "const char *",
 }
 
 
