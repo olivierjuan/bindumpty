@@ -27,7 +27,8 @@ from humpty.db.models import Candidate, Counterexample, Function, Graveyard, Tra
 __all__ = ["archive_candidate", "seed_for", "pareto_front", "ParetoEntry"]
 
 
-def _score_vector(session: Session, *, function_id: int, source: str) -> dict:
+def _score_vector(session: Session, *, function_id: int, source: str,
+                  weights: dict | None = None) -> dict:
     fn = session.get(Function, function_id)
     traces = session.query(Trace).filter(Trace.function_id == function_id).count()
     ces = session.query(Counterexample).filter(
@@ -37,9 +38,15 @@ def _score_vector(session: Session, *, function_id: int, source: str) -> dict:
     trace_rate = 1.0 if traces == 0 else max(0.0, 1.0 - ces / max(traces, 1))
     fuzz_rate = -float(ces)  # negated: higher (less negative) = fewer CEs
     simplicity = -len(source) / 1000.0
-    return {"trace_pass_rate": round(trace_rate, 4),
-            "fuzz_divergence_rate": round(fuzz_rate, 4),
-            "simplicity": round(simplicity, 4)}
+    raw = {"trace_pass_rate": trace_rate,
+           "fuzz_divergence_rate": fuzz_rate,
+           "simplicity": simplicity}
+    # apply the configured Pareto weights (M3 decision: config knobs
+    # graveyard_pareto_weights) so operators can reweight the front.
+    w = weights or {"trace_pass_rate": 1.0,
+                    "fuzz_divergence_rate": 1.0,
+                    "simplicity": 1.0}
+    return {k: round(raw[k] * w.get(k, 1.0), 4) for k in raw}
 
 
 def _dominates(a: dict, b: dict) -> bool:
@@ -69,14 +76,15 @@ class ParetoEntry:
 
 
 def archive_candidate(session: Session, *, candidate_id: int,
-                      max_per_function: int = 32) -> int | None:
+                      max_per_function: int = 32,
+                      weights: dict | None = None) -> int | None:
     """Archive a rejected candidate into the graveyard. Returns the
     graveyard row id, or None if the candidate is not rejected."""
     cand = session.get(Candidate, candidate_id)
     if cand is None or cand.status != "rejected":
         return None
     scores = _score_vector(session, function_id=cand.function_id,
-                           source=cand.source_code)
+                           source=cand.source_code, weights=weights)
 
     # recompute ranks for the function's whole graveyard
     existing = (session.query(Graveyard)

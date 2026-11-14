@@ -90,7 +90,7 @@ Work items:
 - [x] Dashboard (NFR-5): `humpty/king/metrics.py` snapshot + terminal render (live-verified on the toy).
 - [x] Durability (NFR-9): workers are stateless and DB-only; a dead worker's jobs re-queue via attempts; the poller's persisted cursor survives restarts.
 - [x] SLURM deployment: `sandbox/slurm/worker_array.sbatch` (array over the queue; NFR-1 — untrusted code in the apptainer sandbox, the worker only orchestrates).
-- [ ] Resolve open decision: graveyard retention policy and Pareto score weights.
+- [x] Resolve open decision: graveyard retention policy and Pareto score weights — `config.graveyard_pareto_weights` + `graveyard_max_per_function` flow into `humpty/king/graveyard.py` (weights applied per axis at score time; retention keeps the Pareto front and caps per function). Unit-tested.
 
 **Exit criterion.** Several functions processed and validated in parallel; the demotion path (FR-13) is exercised; graveyard-seeded repair measurably outperforms from-scratch repair on the same functions; an SLURM-deployed campaign completes.
 
