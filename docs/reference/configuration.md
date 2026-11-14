@@ -41,6 +41,13 @@ llm_cache: true              # NFR-6 response cache
 log_level: info
 ```
 
+## The DB URL
+
+`HUMPTY_DB_URL` picks the orchestration backend: PostgreSQL (SKIP LOCKED
+claims, LISTEN/NOTIFY wakes — the scale path) or SQLite (BEGIN IMMEDIATE
+claims, poller wakes — zero-infra fallback, fine up to ~tens of workers).
+Validation itself always runs on SQLite. See `humpty/king/queue.py`.
+
 ## Where each knob lands
 
 | Knob | Consumer |
