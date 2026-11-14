@@ -61,7 +61,7 @@ doc = {
     # must write (including the trailing parity byte).
     "io_vectors": vectors,
 }
-json.dump(doc, open("ground_truth_call_graph.json", "w"), indent=2)
+json.dump(doc, open("ground_truth/call_graph.json", "w"), indent=2)
 print(f"toy02 ground truth: sha={sha[:12]}... {len(vectors)} IO vectors")
 PY
 ls -l build/

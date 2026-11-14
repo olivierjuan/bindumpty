@@ -38,11 +38,11 @@ troubleshooting table. Every command in it was executed on this commit.
 | Architecture decisions | [docs/decisions/](docs/decisions/) |
 | **The king's court** — `egg` CLI, the king (orchestrator), the men (LLM workers), the DB | [humpty/](humpty/) |
 | **The horses** — C/C++ differential harness, hooks, libFuzzer/AFL++ (the fuzzer) | [horses/](horses/) |
-| Ghidra scripts and fingerprint corpus | [analysis/](analysis/) |
+| Ghidra scripts, export backends, fingerprinting, language detection | [analysis/](analysis/) + [humpty/analyze/](humpty/analyze/) |
 | Record-replay instrumentation | [tracing/](tracing/) |
 | Sandbox and SLURM deployment | [sandbox/](sandbox/) |
 | Toy binaries with known sources (validation baseline) | [toys/](toys/) |
-| Prompt/model benchmarks | [bench/](bench/) |
+| Prompt/model benchmarks (Insight AI harness — pending the LLM gateway) | [bench/inspect/](bench/inspect/) · scorer: [horses/spikes/s4_core.py](horses/spikes/s4_core.py) |
 | Tests | [tests/](tests/) |
 | Pipeline configuration | [config/](config/) |
 
