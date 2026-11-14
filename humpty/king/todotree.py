@@ -88,7 +88,8 @@ class TodoTree:
                 if n.state == "done":
                     branch.add("[green]☑[/green] " + n.text)
                 elif n.state == "active":
-                    branch.add("[yellow]☐[/yellow] " + n.text)
+                    branch.add("[bold yellow]▸ ☐ [/bold yellow] " + n.text +
+                               "  [yellow]◀ running[/yellow]")
                 elif n.state == "failed":
                     branch.add("[red]☒[/red] " + n.text)
                 else:
