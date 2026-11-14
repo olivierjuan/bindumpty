@@ -142,8 +142,29 @@ def main(argv: list[str] | None = None) -> int:
     roots = args.symbol or [n for n, s in symbols.items() if n == "main"] or []
     if not roots:
         console.print("[red]no --symbol given and no `main` found. "
-                      "Pass --symbol NAME (see --list).[/red]")
+                      "Pass --symbol NAME or an address like fn_<vaddr> "
+                      "(use --list to browse).[/red]")
         return 2
+    # accept raw hex addresses ("0x1290", "1290") as symbol anchors — on a
+    # stripped binary, names are the analyser's, not the binary's
+    resolved_roots = []
+    for r in roots:
+        if r in symbols:
+            resolved_roots.append(r)
+            continue
+        try:
+            addr = int(r, 16) if not r.startswith("0x") else int(r, 16)
+        except ValueError:
+            console.print(f"[red]symbol {r!r} not found "
+                          f"(use --list to browse)[/red]")
+            return 2
+        pseudo = f"fn_{addr:x}"
+        if pseudo in symbols or True:
+            symbols[pseudo] = __import__(
+                "humpty.analyze.symtree", fromlist=["Symbol"]).Symbol(
+                name=pseudo, vaddr=addr, size=0)
+            resolved_roots.append(pseudo)
+    roots = resolved_roots
 
     trees = {}
     for root in roots:
