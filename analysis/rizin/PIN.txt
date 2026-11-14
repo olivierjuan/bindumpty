@@ -1,0 +1,7 @@
+# rizin pin (NFR-8: pinned dependencies).
+version: rizin 0.9.1 (static x86_64)
+commit: c3a90e9226d977f58f4e9c75f78fa6b07afe13c7
+url: https://github.com/rizinorg/rizin/releases/download/v0.9.1/rizin-v0.9.1-static-x86_64.tar.xz
+size: 137626404
+pinned: 2026-11-14
+layout: tarball root contains bin/, lib/, include/, share/

@@ -68,6 +68,10 @@ class Graph:
     # "lean_cpp"); detected per binary (Ghidra authority, ELF pre-filter
     # fallback) — see humpty.analyze.detect_lang.
     source_lang: str = "c"
+    # Which exporter produced this graph ("ghidra" | "objdump" | ...). The
+    # king cross-checks two backends' graphs against each other when both
+    # exist for one binary — a cheap pre-LLM disagreement signal.
+    backend: str = "unknown"
 
 
 def strongly_connected_components(
@@ -222,6 +226,13 @@ def load_call_graph(session: Session, *, json_path: str | Path, binary: str | Pa
     elif src_lang not in ("c", "cpp", "lean_cpp"):
         raise CallGraphError(f"binary.source_lang: bad verdict {src_lang!r}")
 
+    # Exporter backend (multi-backend seam, analysis/exporters): recorded so
+    # cross-backend runs are attributable, and so the king can schedule a
+    # cross-check when two backends produced graphs for one binary.
+    backend = header.get("backend", "unknown")
+    if not isinstance(backend, str) or not backend.strip():
+        raise CallGraphError("binary.backend: must be a non-empty string")
+
     # --- functions ------------------------------------------------------
     ids: dict[str, int] = {}
     nodes: list[int] = []
@@ -254,6 +265,7 @@ def load_call_graph(session: Session, *, json_path: str | Path, binary: str | Pa
 
     # --- edges ----------------------------------------------------------
     edges: list[tuple[int, int, str]] = []
+    seen_edges: set[tuple[str, str, str]] = set()
     for i, e in enumerate(data.get("edges", [])):
         caller = _require(e, "caller", f"edges[{i}]")
         callee = _require(e, "callee", f"edges[{i}]")
@@ -264,6 +276,13 @@ def load_call_graph(session: Session, *, json_path: str | Path, binary: str | Pa
             raise CallGraphError(f"edges[{i}]: unknown endpoint {caller!r}/{callee!r}")
         if caller == callee:
             raise CallGraphError(f"edges[{i}]: self-loop on {caller!r}")
+        # duplicate parallel edges (e.g. two call sites to one callee, or an
+        # exporter emitting per-site rows) collapse to one — the graph is a
+        # set, the call-site count lives in the analysis, not the edge table.
+        key = (caller, callee, kind)
+        if key in seen_edges:
+            continue
+        seen_edges.add(key)
         edges.append((ids[caller], ids[callee], kind))
         session.add(
             CallEdge(caller_id=ids[caller], callee_id=ids[callee], kind=kind)
@@ -284,4 +303,4 @@ def load_call_graph(session: Session, *, json_path: str | Path, binary: str | Pa
 
     session.flush()
     return Graph(functions=ids, edges=edges, topological_order=order,
-                 scc_ids=scc_ids, source_lang=src_lang)
+                 scc_ids=scc_ids, source_lang=src_lang, backend=backend)

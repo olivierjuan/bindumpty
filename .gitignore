@@ -50,3 +50,5 @@ ghidra_projects/
 .DS_Store
 *.swp
 ghidra_12.2_PUBLIC_20261016.zip
+# rizin backend: static binary dist (pinned in analysis/rizin/PIN.txt)
+analysis/rizin/dist/
