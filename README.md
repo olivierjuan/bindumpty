@@ -21,6 +21,12 @@ Three pillars (see [WHITEPAPERS.md](WHITEPAPERS.md) for the full specification):
 A function is *trusted* when no divergence is found within budget and all
 callees are trusted; *proven* only via equivalence checking (FR-11).
 
+## First real binary
+
+```bash
+.venv/bin/python humpty/king/lpex2_case.py   # DAXPY in the 34MB CPLEX example
+```
+
 ## Documentation
 
 Full docs site (Material, searchable, with generated API reference) builds
