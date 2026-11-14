@@ -21,6 +21,13 @@ Three pillars (see [WHITEPAPERS.md](WHITEPAPERS.md) for the full specification):
 A function is *trusted* when no divergence is found within budget and all
 callees are trusted; *proven* only via equivalence checking (FR-11).
 
+## Documentation
+
+Full docs site (Material, searchable, with generated API reference) builds
+on every main push and publishes to GitHub Pages:
+`https://olivierjuan.github.io/bindumpty/`. Locally:
+`pip install mkdocs-material mkdocstrings[python] mkdocs-gen-files mkdocs-minify-plugin && python -m mkdocs serve`.
+
 ## Getting started
 
 **[docs/getting_started.md](docs/getting_started.md)** — from a clean clone
