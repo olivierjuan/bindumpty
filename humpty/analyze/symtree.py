@@ -144,11 +144,37 @@ def subtree(elf: str, root: str, depth: int = 3,
     all_syms = list(symbols.values()) if symbols else list(load_symbols(elf).values())
     by_name = {s.name: s for s in all_syms}
     if root not in by_name:
-        raise KeyError(f"symbol {root!r} not found; use --list to browse")
+        # tolerate raw addresses and fn_<vaddr> anchors (main in a stripped
+        # PIE is never a call target — the known analyzer gap): anchor at the
+        # address on demand
+        addr = None
+        if root.startswith("fn_"):
+            try:
+                addr = int(root[3:], 16)
+            except ValueError:
+                pass
+        else:
+            try:
+                addr = int(root, 16)
+            except ValueError:
+                pass
+        if addr is None:
+            raise KeyError(f"symbol {root!r} not found; use --list to browse")
+        sym = Symbol(name=f"fn_{addr:x}", vaddr=addr, size=0)
+        all_syms.append(sym)
+        by_name[sym.name] = sym
 
     tree = SymTree(root=root)
     seen_names = {root}
-    excl_res = [re.compile(x) for x in (exclude or [])]
+    # patterns accept both regex and shell-glob syntax: an invalid regex
+    # ('mkl_*' — nothing to repeat) is translated from glob form
+    excl_res = []
+    for x in (exclude or []):
+        try:
+            excl_res.append(re.compile(x))
+        except re.error:
+            import fnmatch
+            excl_res.append(re.compile(fnmatch.translate(x)))
 
     def excluded(name: str) -> bool:
         return any(r.search(name) for r in excl_res)
