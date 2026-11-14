@@ -65,3 +65,40 @@ freezes the FR-1 ingestion tooling for production use.
   out/ghidra.json`, diff `out/ghidra.json` against
   `ground_truth/call_graph.json` (edges must match exactly), and record the
   sha256 of the zip into `PIN.txt` (currently `PENDING`).
+
+## Live run — EXECUTED 2026-11-14 (Ghidra 12.2 headless, JDK 25)
+
+Environment: `openjdk-25-jdk-headless` (Ghidra 12.2 requires `java.min=25`,
+JDK 21 was rejected), `JAVA_HOME_OVERRIDE` set in `support/launch.properties`,
+sha256 of the zip recorded in `analysis/ghidra/PIN.txt`.
+
+Two 12.2 API migrations were needed in `ExportCallGraph.java` (written against
+an older API): `Program.getExecutableSHA256()` replaces manual hashing,
+`getScriptArgs()` replaces `state[]`, `DemanglerUtil.demangle` replaces the
+removed `DemanglerManager`, `SourceType.AUTO` is now `ANALYSIS`,
+`Memory.isBigEndian` negated, `RefType.isIndirectCall` → name contains
+`COMPUTED`, and function-body instruction iteration goes through
+`Listing.getInstructions(body, true)`. Scripts moved to
+`analysis/ghidra/scripts/` (isolated scriptPath — the default bundle sweep
+compiles Ghidra's own GPL/DMG sample sources, which fail and poison the OSGi
+bundle cache; after any failed bundle run, wipe
+`~/.config/ghidra/ghidra_12.2_PUBLIC/osgi/{compiled-bundles,felixcache}`).
+
+### Result — call graph
+`analysis/ghidra/out/toy01_ghidra.json`: edges `checksum_block→fnv1a` (×2),
+`checksum_block→digit_sum_u32` match the ground truth exactly after image-base
+normalization (Ghidra loads the PIE at 0x100000; file vaddrs are offset).
+
+### Result — source-language verdict
+`analysis/ghidra/out/toy01_lang.json`: `{"verdict":"c","confidence":"medium"}`
+— agrees with the ELF pre-filter's `c` (two-tier detection confirmed live).
+
+### Known gap discovered (feeds FR-3, not a defect)
+`main` (file vaddr 0x1290) is **not discovered** by default headless analysis:
+in a stripped PIE, `main` reaches `__libc_start_main` through a register, so
+there is no direct call and Ghidra has no external reference to create the
+function. The three leaf/parent functions (direct-call graph) are all found.
+Fix path: FR-3 record-replay supplies the missing entry (function called
+during trace), or an `-analysisStrategy` / `Decompiler Parameter ID` re-run.
+This is the documented reason M2's hybrid harness keys on trace-completed
+graphs, not raw analyzer output.
