@@ -20,14 +20,38 @@ echo "built:"
 ls -l build/toy01 build/toy01.sym
 file build/toy01
 
-# Keep the ground-truth call graph's binary identity in sync (NFR-2): the
-# sha256 of the stripped ELF is the function set's identity.
+# Keep the ground truth in sync with the just-built binary (NFR-2). The sha256
+# is the function set's identity. Additionally, function *addresses* are
+# re-extracted from the unstripped build: codegen changes can shift the layout
+# (observed 2026-11-14: a 0x20 shift with unchanged sizes), and stale
+# addresses would make trace replay and FR-7 hooking hit the wrong bytes.
 python3 - <<'PY'
-import hashlib, json
+import hashlib, json, re, subprocess
+
 sha = hashlib.sha256(open("build/toy01", "rb").read()).hexdigest()
-p = "ground_truth/call_graph.json"
-g = json.load(open(p))
-g["binary"]["sha256"] = sha
-json.dump(g, open(p, "w"), indent=2)
-print(f"call_graph.json binary.sha256 = {sha}")
+
+# Authoritative addresses from the unstripped build (nm).
+nm_out = subprocess.run(["nm", "-n", "build/toy01.sym"], capture_output=True, text=True).stdout
+addrs = {}
+for line in nm_out.splitlines():
+    m = re.match(r"^([0-9a-f]+)\s+[A-Z]\s+(\S+)$", line)
+    if m:
+        addrs[m.group(2)] = int(m.group(1), 16)
+
+# Sync addresses + sha in both ground-truth files.
+for p in ("ground_truth/call_graph.json", "ground_truth/function_specs.json"):
+    g = json.load(open(p))
+    if "binary" in g:
+        g["binary"]["sha256"] = sha
+    changed = []
+    for fn in g.get("functions", []):
+        want = addrs.get(fn["name"])
+        if want is None:
+            continue
+        cur = int(str(fn["address"]), 16)
+        if cur != want:
+            fn["address"] = f"0x{want:x}"
+            changed.append(f"{fn['name']}: 0x{cur:x}->0x{want:x}")
+    json.dump(g, open(p, "w"), indent=2)
+    print(f"{p}: sha={sha[:12]}… " + (", ".join(changed) if changed else "addresses unchanged"))
 PY

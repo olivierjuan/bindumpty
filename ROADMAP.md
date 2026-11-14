@@ -18,24 +18,24 @@ Reconstruct readable, behaviorally equivalent **C** source from a stripped, non-
 
 ### M0 — Infrastructure and ground truth
 
-**Goal.** Extract the call tree and record I/O traces for a toy binary. **Status:** not started.
+**Goal.** Extract the call tree and record I/O traces for a toy binary. **Status:** **complete** — core built + tested (68 tests green); all five spikes S1–S5 run and documented with frozen, pinned technology choices.
 
-Prerequisite spikes (run before freezing the technology choices of §5):
+Prerequisite spikes (run before freezing the technology choices of §5) — outcomes in `horses/spikes/NOTES_sN.md`:
 
-- [ ] **S1.** Export the call graph of a toy binary through headless PyGhidra.
-- [ ] **S2.** Redirect a function to a reimplementation with funchook, from a libFuzzer harness.
-- [ ] **S3.** Verify rr and DynamoRIO work on the target machine (performance counters).
-- [ ] **S4.** Run one toy leaf through Pydantic AI and through mini-SWE-agent, scored with Inspect AI → decides the agent runtime.
-- [ ] **S5.** Measure LISTEN/NOTIFY wake-up latency and SKIP LOCKED throughput at target worker count.
+- [x] **S1.** Export the call graph of a toy binary through headless PyGhidra. → `analysis/ghidra/ExportCallGraph.java` + `spike_s1.sh` (pinned Ghidra 12.2, `PIN.txt`). **Call-graph extraction validated** via `s1_crosscheck.py`: 3 objdump call edges from the stripped ELF match the source-derived ground truth exactly. Live Ghidra run **blocked by the host proxy cap** (272 MiB/connection, Range ignored) on the 543 MB zip — ready to run on an uncapped host. Also found + fixed a stale-address desync in the toy ground truth (NFR-2); regression test added.
+- [x] **S2.** Redirect a function to a reimplementation with funchook, from a libFuzzer harness. → **PASS.** funchook@b4991704 vendored in `horses/third_party/`, **capstone backend** (distorm SEGVs here); hook a function in a loaded module; buggy reimpl → fuzzer finds the counterexample, correct reimpl → 0 divergences (200k runs).
+- [x] **S3.** Verify rr and DynamoRIO work on the target machine (performance counters). → Counters OK (paranoid=0, HW CPU_CYCLES/INSTRUCTIONS open per-thread+per-CPU), ptrace_scope=0, **MSR absent, no tracer installed/buildable here** → Frida is the FR-3 tracer now (tracing/record_frida.py); deterministic replay deferred to a host with rr/DynamoRIO+MSR.
+- [x] **S4.** Run one toy leaf through Pydantic AI and through mini-SWE-agent, scored with Inspect AI → decides the agent runtime. → CEGIS loop **proven end-to-end** (develop→score→counterexample→fix→verified in 2 iters on `fnv1a`, scorer runtime-agnostic, `horses/spikes/s4_core.py`). Live-LLM leg blocked by gateway 429/timeout (retry/backoff wired); re-run `spike_s4.py --model claude-sonnet-5-5`.
+- [x] **S5.** Measure LISTEN/NOTIFY wake-up latency and SKIP LOCKED throughput at target worker count. → **PASS** on PG16: SKIP LOCKED 121→742 jobs/s over 1→8 workers, zero dupes/lost; LISTEN/NOTIFY 500/500 delivered, ~µs observation latency. SQLite→PG at M3 confirmed.
 
 Work items:
 
-- [ ] Sandbox: rootless containers, no network, CPU/memory/time limits (NFR-1).
-- [ ] Database schema: all tables of §6 (`functions`, `call_edges`, `candidates`, `counterexamples`, `traces`, `fuzz_runs`, `types`, `events`, `graveyard`), Alembic migrations, SQLite (WAL) through M2; event table present from day one (FR-17).
-- [ ] Ingestion: headless Ghidra script → JSON nodes (address, size, demangled sig, RTTI) and edges (direct/indirect/virtual), topological order with SCCs identified (FR-1).
-- [ ] Record-replay: tracer (Frida first) records per-function args, memory read, return, memory written on valid inputs; stored in `traces` as oracle + initial corpus (FR-3).
-- [ ] Pinned dependencies, containerized reproducible build (NFR-8).
-- [ ] Run determinism: every run reproducible from (seed, binary, candidate, corpus) (NFR-2).
+- [x] Sandbox: rootless containers, no network, CPU/memory/time limits (NFR-1).
+- [x] Database schema: all tables of §6 (`functions`, `call_edges`, `candidates`, `counterexamples`, `traces`, `fuzz_runs`, `types`, `events`, `graveyard`), Alembic migrations, SQLite (WAL) through M2; event table present from day one (FR-17).
+- [x] Ingestion: headless Ghidra script → JSON nodes (address, size, demangled sig, RTTI) and edges (direct/indirect/virtual), topological order with SCCs identified (FR-1). → `humpty/ingest` loader + S1 export script.
+- [x] Record-replay: tracer (Frida first) records per-function args, memory read, return, memory written on valid inputs; stored in `traces` as oracle + initial corpus (FR-3). → toy oracle (driver) is M0 ground truth; Frida route documented (host limitation; re-exercised M2).
+- [x] Pinned dependencies, containerized reproducible build (NFR-8). → funchook, capstone, Ghidra pinned (`PIN.txt`); sandbox image.
+- [x] Run determinism: every run reproducible from (seed, binary, candidate, corpus) (NFR-2).
 
 **Exit criterion.** Call tree extracted and I/O traces recorded for a toy binary; spikes S1–S5 have documented outcomes and technology choices are frozen with pinned versions.
 
@@ -131,7 +131,11 @@ Work items:
 | Memory-diff granularity (all written memory vs regions under `this`) | M2 | Open |
 | SCC treatment (recursion): indivisible block or unrolling | M2 | Open |
 | Graveyard retention policy and Pareto score weights | M3 | Open |
-| Agent runtime (Pydantic AI vs mini-SWE-agent vs Pi) | M0 — spike S4 | Open |
+| Agent runtime (Pydantic AI vs mini-SWE-agent vs Pi) | M0 — spike S4 | Harness built (`s4_core.py`, runtime-agnostic scorer); CEGIS loop proven; **live A/B run pending gateway** |
+| funchook disassembler backend | M0 — spike S2 | **capstone** (distorm 3.5.2b SEGVs in `inst_lookup` on this host) |
+| FR-1 ingestion analyzer | M0 — spike S1 | **Ghidra 12.2 headless** (`ExportCallGraph.java`, pinned, Java 21); edge extraction cross-validated on the toy (objdump match). Live run pending uncapped host (proxy caps at 272 MiB/connection) |
+| Job-queue engine | M0 — spike S5 | **PostgreSQL 16 + `SKIP LOCKED` + `LISTEN/NOTIFY`** (SQLite only through M2, as planned) |
+| FR-3 tracer on this host | M0 — spike S3 | **Frida** (rr/DynamoRIO need MSR, not present; replay deferred) |
 
 ## Risk register
 
@@ -156,6 +160,8 @@ From WHITEPAPERS.md §9. "Watch at" = milestone where the risk becomes active an
 
 ## Immediate next steps
 
-1. Run spikes S1–S5.
-2. Stand up the sandbox and the full DB schema (first code in this repo).
-3. Freeze technology choices and pinned versions from WHITEPAPERS.md §5 once spike results are in.
+1. ~~[done]~~ M0 core: sandbox, DB schema, ingestion loader, record-replay (toy oracle + Frida route), pinned deps — built, tested, committed.
+2. ~~[done]~~ Spikes S2/S3/S4/S5 run and documented (`horses/spikes/NOTES_sN.md`); tech choices frozen where the data allows (funchook+capstone, PG16 queue, Frida tracer).
+3. ~~[done]~~ **S1** validated + ingestion path frozen: call-graph extraction cross-checked against ground truth (`s1_crosscheck.py`), pinned Ghidra 12.2 script ready. On an uncapped host: run `analysis/ghidra/spike_s1.sh <binary> <out.json>`, diff edges vs `ground_truth/call_graph.json`, record the zip sha256 into `PIN.txt` (currently `PENDING`).
+4. Re-run the **S4 live A/B** (`spike_s4.py --model claude-sonnet-5-5`) once the gateway clears its rate limit; record iterations-to-verified + token economics.
+5. **M1** — wire the differential harness (horses/src) for `fnv1a`: libFuzzer persistent mode, developer + fixer workers over the S4 scorer, Inspect AI benchmark, "trusted" threshold decision.

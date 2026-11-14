@@ -58,6 +58,52 @@ def _require_artifacts():
             pytest.skip(f"toy artifact missing: {p} (run build.sh + record.sh)")
 
 
+def _nm_addresses():
+    """Authoritative function addresses from the unstripped build (nm)."""
+    import re
+    import shutil
+    import subprocess
+
+    root = _repo_root()
+    sym = os.path.join(root, CASE, "build", "toy01.sym")
+    if not os.path.exists(sym) or shutil.which("nm") is None:
+        pytest.skip("toy01.sym or nm unavailable (run build.sh)")
+    out = subprocess.run(["nm", "-n", sym], capture_output=True, text=True).stdout
+    addrs = {}
+    for line in out.splitlines():
+        m = re.match(r"^([0-9a-f]+)\s+[A-Z]\s+(\S+)$", line)
+        if m:
+            addrs[m.group(2)] = int(m.group(1), 16)
+    return addrs
+
+
+def test_ground_truth_addresses_match_binary():
+    """Guard: ground-truth function addresses must match the built binary.
+
+    A codegen change can shift the ELF layout (observed 2026-11-14: a uniform
+    0x20 shift with unchanged sizes). Stale addresses make trace replay and
+    FR-7 hooking (module.base + vaddr) hit the wrong bytes, so the recorded
+    addresses must stay in lockstep with the unstripped build.
+    """
+    import json
+
+    root = _repo_root()
+    cg = os.path.join(root, CASE, "ground_truth", "call_graph.json")
+    if not os.path.exists(cg):
+        pytest.skip(f"call graph missing: {cg} (run build.sh)")
+    addrs = _nm_addresses()
+    g = json.load(open(cg))
+    mismatches = []
+    for fn in g.get("functions", []):
+        want = addrs.get(fn["name"])
+        if want is None:
+            continue
+        got = int(str(fn["address"]), 16)
+        if got != want:
+            mismatches.append(f"{fn['name']}: gt=0x{got:x} binary=0x{want:x}")
+    assert not mismatches, "ground-truth addresses desynced: " + "; ".join(mismatches)
+
+
 def test_m0_exit_criterion_case_01(factory):
     """The full M0 pipeline: ingest -> ready set -> trace load -> oracle check."""
     _require_artifacts()

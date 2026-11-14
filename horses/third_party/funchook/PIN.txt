@@ -1,0 +1,5 @@
+upstream: https://github.com/kubo/funchook
+commit: b4991704add411ecbc492dae020f375124d51f45
+license: GPL-2.0-or-later (with linking exception)
+vendored: 2026-11-14
+backend: capstone 5.0.1 (frozen by S2; distorm 3.5.2b SEGVs in inst_lookup on this host)
