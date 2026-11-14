@@ -41,8 +41,7 @@ def test_counterexample_persistence_dedups():
 @pytest.fixture()
 def buggy_candidate():
     """The seed (deliberately wrong) candidate .so, restored after the test."""
-    with open(hd.CAND_SRC) as f:
-        orig_src = f.read()
+    orig_src = '#include <stdint.h>\n#include <stddef.h>\n\nuint32_t fnv1a(const uint8_t *data, size_t len) {\n    uint32_t hash = 2166136261u;\n    for (size_t i = 0; i < len; i++) {\n        hash ^= (uint32_t)data[i];\n        hash *= 16777619u;\n    }\n    return hash;\n}\n\nint digit_sum_u32(uint32_t x) {\n    int s = 0;\n    do { s += (int)(x % 10u); x /= 10u; } while (x != 0u);\n    return s;\n}\n\nuint32_t checksum_block(const uint8_t *data, size_t len) {\n    size_t half = len / 2;\n    uint32_t h1 = fnv1a(data, half);\n    uint32_t h2 = fnv1a(data + half, len - half);\n    uint32_t mix = h1 ^ (h2 * 2654435761u);\n    return mix ^ (uint32_t)digit_sum_u32(mix);\n}\n'
     buggy = orig_src.replace(
         "    for (size_t i = 0; i < len; i++) {\n        hash ^= (uint32_t)data[i];",
         "    if (len == 0xFF) hash = 0x12345678u;\n"
