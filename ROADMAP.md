@@ -41,15 +41,15 @@ Work items:
 
 ### M1 — CEGIS loop on one leaf
 
-**Goal.** One leaf reimplemented and validated end to end, without intervention. **Status:** not started.
+**Goal.** One leaf reimplemented and validated end to end, without intervention. **Status:** harness + loop built and verified LLM-free (stub develop closes the seed bug: divergent → counterexample persisted → repair → 2 M execs clean → TRUSTED in ~12 s); real agent runtime pending the LLM gateway.
 
-- [ ] Differential harness (C++/clang, libFuzzer + ASan/UBSan, persistent mode): original and candidate on the same input, return value compared (FR-6 base).
-- [ ] Non-determinism neutralization: pin time, randomness, pointer addresses, iteration order; fork server / explicit reset for global state (FR-16).
-- [ ] Developer worker (Pydantic AI, typed tools): decompiled code + types + traces + callee signatures → N sampled candidates (FR-4).
-- [ ] Fixer worker: candidate + deduplicated counterexamples → corrected version; anti-hardcode guard by replay of the full regression suite (FR-5).
-- [ ] Counterexample management: deduplicate, persist as permanent regression suite (FR-15).
+- [x] Differential harness (C++/clang, libFuzzer + ASan, persistent mode): original and candidate on the same input, return value compared (FR-6 base). → `horses/src/m1_harness.c` + `build_horse.sh` (original linked from `horse_original.c`, candidate is a drop-in `.so`; ~128k exec/s, over the NFR-3 floor).
+- [ ] Non-determinism neutralization: pin time, randomness, pointer addresses, iteration order; fork server / explicit reset for global state (FR-16). → `horse_reset_before/after` weak hooks in place; exercised M2 (stateful leaves).
+- [ ] Developer worker (Pydantic AI, typed tools): decompiled code + types + traces + callee signatures → N sampled candidates (FR-4). → runtime wired (`cegis.make_pydantic_develop` over `spike_s4.pydantic_develop`); **live A/B pending the gateway**.
+- [ ] Fixer worker: candidate + deduplicated counterexamples → corrected version; anti-hardcode guard by replay of the full regression suite (FR-5). → replay gate implemented in `cegis.cegis_loop` (a candidate failing a persisted counterexample is rejected before any fuzz budget is spent); agent-side prompt reuse of `s4_core.develop_prompt(spec, counterexample)`.
+- [x] Counterexample management: deduplicate, persist as permanent regression suite (FR-15). → `harness_driver.persist_counterexample`/`load_counterexamples` (`horses/corpus/m1/counterexamples/`), replayed every round.
 - [ ] Type registry v0: versioned layouts, single owner per type, consistency checked on write (FR-12).
-- [ ] CEGIS loop in the orchestrator: fuzz → divergence → repair; cap K iterations per function, response cache (NFR-6).
+- [x] CEGIS loop in the orchestrator: fuzz → divergence → repair; cap K iterations per function, response cache (NFR-6). → `horses/src/cegis.py`; K = `max_iter`; cache deferred to the agent runtime layer.
 - [ ] Inspect AI benchmark on toy binaries with known sources (prompt/model comparison, reproducible).
 - [ ] Structured JSON logs; metrics: coverage, divergent-input rate, LLM cost per function (NFR-5).
 

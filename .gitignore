@@ -23,6 +23,13 @@ horses/corpus/**
 *.sancov
 *.hn
 .afl/
+# libFuzzer crash artifacts (written to cwd; reproducible from the corpus)
+/crash-*
+/leak-*
+/timeout-*
+/horses/src/crash-*
+/horses/src/leak-*
+/horses/src/timeout-*
 # Spike build outputs (source + drivers are committed; binaries regenerate)
 horses/spikes/out/
 # Vendored third-party: keep source + pins, ignore build trees
