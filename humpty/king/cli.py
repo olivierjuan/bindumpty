@@ -251,16 +251,21 @@ def main(argv: list[str] | None = None) -> int:
     factory = make_session_factory(eng)
     sha = binary_sha256(args.binary)
 
-    with console.status("[blue]ingesting call graph...") as st:
+    with console.status("[blue]exporting call graph (backend: "
+                        f"{args.backend})...") as st:
+        import time as _time
+        _t0 = _time.time()
         cg_path = _graph_for(args, trees)
-        st.update(f"[blue]call graph produced — inserting into the DB...[/blue]")
+        st.stop()
+        console.print(f"[blue]call graph exported in "
+                      f"{_time.time()-_t0:.1f}s — inserting...[/blue]")
 
         from rich.progress import (BarColumn, Progress, TaskProgressColumn,
                                    TextColumn, TimeElapsedColumn)
         with Progress(TextColumn("  [blue]ingest[/blue] {task.description}"),
                       BarColumn(), TaskProgressColumn(),
                       TimeElapsedColumn(), console=console,
-                      transient=True) as prog:
+                      transient=False) as prog:
             tasks = {}
 
             def on_progress(stage, done, total):
