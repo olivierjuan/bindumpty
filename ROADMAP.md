@@ -139,7 +139,7 @@ Work items:
 | Graveyard retention policy and Pareto score weights | M3 | Open |
 | Agent runtime (Pydantic AI vs mini-SWE-agent vs Pi) | M0 — spike S4 | Harness built (`s4_core.py`, runtime-agnostic scorer); CEGIS loop proven; **live A/B run pending gateway** |
 | funchook disassembler backend | M0 — spike S2 | **capstone** (distorm 3.5.2b SEGVs in `inst_lookup` on this host) |
-| FR-1 ingestion analyzer | M0 — spike S1 | **Ghidra 12.2 headless** (`analysis/ghidra/scripts/ExportCallGraph.java`, zip sha256 pinned, **JDK 25**); **live run executed** — edges match ground truth, verdict `c` agrees with the ELF pre-filter. Known gap: default analysis misses register-passed `main` in a stripped PIE (FR-3 completes it) |
+| FR-1 ingestion analyzer | M0 — spike S1 | **Multi-backend, one contract** (`analysis/exporters/`): **ghidra** 12.2 headless (authority for `source_lang`; live run executed), **objdump** (always available), **rizin** 0.9.1 static (pinned). All three match toy ground truth exactly; `binary.backend` recorded per graph; `compare_backends` reports edge disagreement as a pre-LLM signal. Known shared gap: register-passed `main` in a stripped PIE (FR-3 completes it) |
 | Job-queue engine | M0 — spike S5 | **PostgreSQL 16 + `SKIP LOCKED` + `LISTEN/NOTIFY`** (SQLite only through M2, as planned) |
 | FR-3 tracer on this host | M0 — spike S3 | **Frida** (rr/DynamoRIO need MSR, not present; replay deferred) |
 
