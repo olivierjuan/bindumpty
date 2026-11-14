@@ -306,6 +306,8 @@ def main(argv: list[str] | None = None) -> int:
             tt.finish_phase("II", "functions")
             tt.finish_phase("II", "edges")
 
+        tt.start_phase("II", "functions")
+        tt.message(f"ingesting {cg_path} into {db_path}")
         with step_ctx(console, "ingest into DB") as st:
             from rich.progress import (BarColumn, Progress, TaskProgressColumn,
                                        TextColumn, TimeElapsedColumn)
