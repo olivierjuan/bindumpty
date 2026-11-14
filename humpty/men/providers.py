@@ -49,10 +49,10 @@ PROVIDERS = {
     "claude": ("ANTHROPIC_AUTH_TOKEN", "claude-sonnet-5-5",
                "direct Anthropic Messages API (the EDF gateway path)"),
     "litellm": ("LITELLM_KEY", "gpt-4o-mini",
-                "litellm router: gemini/*, openrouter/*, ollama/*, "
-                "openai/*, groq/*, together/*, ..."),
+                "litellm router: pass full litellm ids (gemini/*, "
+                "openrouter/*, ollama/*, openai/*, groq/*, ...)"),
     "gemini": ("GEMINI_API_KEY", "gemini-2.0-flash",
-               "Google Gemini via litellm"),
+               "Google Gemini via litellm (route prefix added)"),
     "openrouter": ("OPENROUTER_API_KEY", "openai/gpt-4o",
                    "OpenRouter via litellm (user passes openrouter/<model>)"),
     "codex": ("OPENAI_API_KEY", "openai/codex-mini-latest",
@@ -79,17 +79,10 @@ def resolve_provider(provider: str | None, model: str | None,
     model = (model or os.environ.get("HUMPTY_MODEL") or default_model)
     # litellm models carry a route prefix (ollama/, openai/, gemini/...);
     # never double it when the user already passed one
-    if provider in ("litellm", "gemini", "openrouter", "codex", "modal",
-                    "ollama", "vllm") and provider != "openrouter":
-        route = provider if provider != "gemini" else "gemini"
-        if provider == "codex":
-            route = "openai"
-        if provider == "modal":
-            route = "openai"
-        if provider == "vllm":
-            route = "openai"
-        if not model.startswith(route + "/"):
-            model = f"{route}/{model}"
+    route_map = {"gemini": "gemini", "codex": "openai", "modal": "openai",
+                 "ollama": "ollama", "vllm": "openai"}
+    if provider in route_map and not model.startswith(route_map[provider] + "/"):
+        model = f"{route_map[provider]}/{model}"
     base = api_base or os.environ.get("HUMPTY_API_BASE")
     if provider == "claude" and not base:
         base = os.environ.get("ANTHROPIC_BASE_URL")
