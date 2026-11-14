@@ -100,13 +100,14 @@ def compare_backends(a: ExportResult, b: ExportResult) -> dict:
 # --- backend implementations -------------------------------------------------
 
 
-def _objdump_backend(binary: str | Path, out_json: str | Path) -> ExportResult:
+def _objdump_backend(binary: str | Path, out_json: str | Path,
+                     progress=None) -> ExportResult:
     """objdump backend: parse call sites from the disassembly, assign each to
     its containing function. Fast, always available, no name recovery on
     stripped binaries (names stay FUN_<vaddr>-style)."""
     from .objdump_export import objdump_call_graph
 
-    res = objdump_call_graph(binary)
+    res = objdump_call_graph(binary, progress=progress)
     return res  # caller writes it out (sha known there)
 
 
