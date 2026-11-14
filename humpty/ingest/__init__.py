@@ -242,6 +242,7 @@ def load_call_graph(session: Session, *, json_path: str | Path, binary: str | Pa
 
     # --- functions ------------------------------------------------------
     ids: dict[str, int] = {}
+    s_addrs: dict[str, int] = {}
     nodes: list[int] = []
     fns_all = data.get("functions", [])
     for i, fn in enumerate(fns_all):
@@ -255,7 +256,16 @@ def load_call_graph(session: Session, *, json_path: str | Path, binary: str | Pa
             raise CallGraphError(f"functions[{i}].demangled_sig must be str")
         has_rtti = bool(fn.get("has_rtti", False))
         if str(name) in ids:
-            raise CallGraphError(f"duplicate function name {name!r}")
+            # duplicate name in the graph: the exporter discovered the same
+            # function twice (synthetic fn_<vaddr> anchors from overlapping
+            # ranges). First entry wins — identical address is harmless, a
+            # different address is an exporter bug the graph can't represent.
+            prev = s_addrs.get(str(name))
+            if prev is not None and prev != int(str(fn["address"]), 0):
+                raise CallGraphError(
+                    f"functions[{i}]: duplicate name {name!r} at two addresses "
+                    f"({prev:#x} and {int(str(fn['address']), 0):#x})")
+            continue
         row = Function(
             binary_sha256=sha,
             name=str(name),
@@ -271,6 +281,7 @@ def load_call_graph(session: Session, *, json_path: str | Path, binary: str | Pa
         session.add(row)
         session.flush()
         ids[name] = row.id
+        s_addrs[name] = addr
         nodes.append(row.id)
 
     # --- edges ----------------------------------------------------------

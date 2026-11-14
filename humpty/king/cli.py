@@ -251,36 +251,73 @@ def main(argv: list[str] | None = None) -> int:
     factory = make_session_factory(eng)
     sha = binary_sha256(args.binary)
 
-    with console.status("[blue]exporting call graph (backend: "
-                        f"{args.backend})...") as st:
-        import time as _time
-        _t0 = _time.time()
-        cg_path = _graph_for(args, trees)
-        st.stop()
-        console.print(f"[blue]call graph exported in "
-                      f"{_time.time()-_t0:.1f}s — inserting...[/blue]")
+    from humpty.king.todotree import TodoTree
 
-        from rich.progress import (BarColumn, Progress, TaskProgressColumn,
-                                   TextColumn, TimeElapsedColumn)
-        with Progress(TextColumn("  [blue]ingest[/blue] {task.description}"),
-                      BarColumn(), TaskProgressColumn(),
-                      TimeElapsedColumn(), console=console,
-                      transient=False) as prog:
-            tasks = {}
+    groups = [
+        ("I", "export call graph",
+         ["backend run", "post-script", "graph written"]),
+        ("II", "ingest into DB", ["functions", "edges"]),
+        ("III", "CEGIS run", [f"validate {t.root}" for t in trees.values()]),
+    ]
+    tt = TodoTree(console, groups)
 
-            def on_progress(stage, done, total):
-                key = f"{stage} ({total} rows)"
-                if key not in tasks:
-                    tasks[key] = prog.add_task(key, total=total)
-                prog.update(tasks[key], completed=done)
+    from humpty.king.steps import step as step_ctx
+    with tt:
+        with step_ctx(console, f"export call graph ({args.backend})") as st:
+            import subprocess as _sp
 
-            with session_scope(factory) as s:
-                load_call_graph(s, json_path=cg_path, binary=args.binary,
-                                progress=on_progress)
-        st.stop()
-    console.print(f"[blue]ingested [b]{_graph_for.__name__}[/b][/blue]"
-                  if False else
-                  "[blue]call graph ingested[/blue]")
+            cg_path = os.path.join(
+                tempfile.mkdtemp(prefix="bindumpty-cg-"), "cg.json")
+            if args.backend == "ghidra":
+                ghidra = os.path.join(
+                    ROOT, "analysis/ghidra/dist/ghidra_12.2_PUBLIC")
+                env = dict(os.environ,
+                           JAVA_HOME="/usr/lib/jvm/java-25-openjdk-amd64")
+                proc = _sp.Popen(
+                    [os.path.join(ghidra, "support/analyzeHeadless"),
+                     os.path.join(ROOT, "analysis/ghidra/dist/lpxproj"),
+                     "CLI", "-import", args.binary, "-overwrite",
+                     "-scriptPath",
+                     os.path.join(ROOT, "analysis/ghidra/scripts"),
+                     "-postScript", "ExportCallGraph.java", cg_path],
+                    stdout=_sp.PIPE, stderr=_sp.STDOUT, text=True,
+                    env=env, cwd=ROOT)
+                for line in proc.stdout:
+                    if "ERROR" in line:
+                        tt.message(line.strip()[:160])
+                    elif "REPORT" in line or "Analysis" in line:
+                        tt.message(line.split("(")[0].strip()[:80])
+                proc.wait()
+                if proc.returncode != 0:
+                    raise RuntimeError(
+                        f"ghidra export failed rc={proc.returncode}")
+            else:
+                cg_path = _graph_for(args, trees)
+            tt.finish_phase("I", "backend run")
+            tt.finish_phase("I", "post-script")
+            tt.finish_phase("I", "graph written")
+
+            tt.finish_phase("II", "functions")
+            tt.finish_phase("II", "edges")
+
+        with step_ctx(console, "ingest into DB") as st:
+            from rich.progress import (BarColumn, Progress, TaskProgressColumn,
+                                       TextColumn, TimeElapsedColumn)
+            with Progress(TextColumn("    {task.description}"),
+                          BarColumn(), TaskProgressColumn(),
+                          TimeElapsedColumn(), console=console,
+                          transient=True) as prog:
+                tasks = {}
+
+                def on_progress(stage, done, total):
+                    key = f"{stage} ({total} rows)"
+                    if key not in tasks:
+                        tasks[key] = prog.add_task(key, total=total)
+                    prog.update(tasks[key], completed=done)
+
+                with session_scope(factory) as s:
+                    load_call_graph(s, json_path=cg_path, binary=args.binary,
+                                    progress=on_progress)
 
     from humpty.men.providers import make_develop
     develop = make_develop(spec)
