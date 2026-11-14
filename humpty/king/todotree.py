@@ -37,6 +37,19 @@ class PhaseNode:
 
 
 class TodoTree:
+    # (substring, phase label) — from a real 34MB import log
+    _GHIDRA_PHASES = [
+        ("Creating project", "project"),
+        ("IMPORTING:", "import"),
+        ("REPORT: Processing input files", "processing inputs"),
+        ("ANALYZING all memory and code", "auto-analysis"),
+        ("Applied data type archive", "datatype archives"),
+        ("Packed database cache", "db cache"),
+        ("analysis succeeded", "analysis done"),
+        ("REPORT: Execute script", "export script"),
+        ("REPORT: Export succeeded", "export done"),
+    ]
+
     def __init__(self, console: Console, groups: list[tuple[str, str, list[str]]],
                  messages_height: int = 6):
         """groups: [(id, title, [phase texts])]."""
