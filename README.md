@@ -38,11 +38,13 @@ callees are trusted; *proven* only via equivalence checking (FR-11).
 
 | M | Objective | Status |
 | --- | --- | --- |
-| M0 | Infrastructure and ground truth (sandbox, schema, ingestion, record-replay) | not started |
-| M1 | CEGIS loop on one leaf | not started |
+| M0 | Infrastructure and ground truth (sandbox, schema, ingestion, record-replay) | **done** — all five spikes S1–S5 run and documented |
+| M1 | CEGIS loop on one leaf | **core built** — differential harness + CEGIS loop verified LLM-free (seed bug closed end to end); live agent A/B pending the LLM gateway |
 | M2 | Climbing the tree (hybrid harness, hooking, fingerprinting, memory diff) | not started |
 | M3 | Parallelization and orchestration (queue, event bus, scheduler, graveyard) | not started |
 | M4 | Strong validation (LLM-vs-LLM, Alive2/Z3, information-gain scheduling) | not started |
+
+Current: **72 tests passing** (`python -m pytest`).
 
 ## Naming
 
@@ -61,6 +63,26 @@ Humpty Dumpty, mapped onto the system:
 ## Repository status
 
 Scaffolded 2026-11-13 from WHITEPAPERS.md; court renamed 2026-11-14.
-Directory structure, manifests, and M0 core implementation in progress.
-First work items: M0 spikes S1–S5 (see [ROADMAP.md](ROADMAP.md),
-"Immediate next steps").
+
+**M0 — done.** Sandbox, DB schema (all tables + migrations), ingestion loader
+(`humpty/ingest`), trace bundle loader (`humpty/trace`), toy case-01 with
+ground truth. All five prerequisite spikes run and documented
+(`horses/spikes/NOTES_s1..s5.md`); technology choices frozen:
+
+- funchook @ b4991704 + capstone 5.0.1 (S2 — distorm SEGVs here)
+- PostgreSQL 16 + `SKIP LOCKED` + `LISTEN/NOTIFY` at M3 (S5)
+- Frida as the FR-3 tracer on this host (S3)
+- Ghidra 12.2 headless as the FR-1 ingestion path (S1; extraction
+  cross-validated against ground truth, live run pending an uncapped host)
+
+**M1 — core built.** Differential harness (`horses/src/m1_harness.c`,
+libFuzzer + ASan, ~128k exec/s clean), counterexample store + regression
+replay gate (FR-15), and the CEGIS loop (`horses/src/cegis.py`) verified end
+to end LLM-free: divergent round → counterexample persisted → repair →
+2 M execs clean → TRUSTED in ~12 s. Remaining: the live agent runtime A/B
+(Pydantic AI — pending the LLM gateway), type registry v0 (FR-12), Inspect AI
+benchmark, JSON logs/metrics (NFR-5).
+
+Known host constraints: forward proxy caps downloads at ~272 MiB/connection
+(Range ignored) and the LLM gateway is rate-limited/timeout-prone; both
+documented in the spike notes with retry/defer paths.
