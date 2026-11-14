@@ -69,7 +69,8 @@ def _move(session: Session, fn: Function, dst: State) -> None:
     session.flush()
 
 
-def _persist_counterexample(session: Session, fn: Function, ce) -> bool:
+def _persist_counterexample(session: Session, fn: Function, ce,
+                            candidate_id: int | None = None) -> bool:
     """Store a divergence as a counterexamples row, deduped by
     (function_id, input_sha256). Returns True when newly inserted."""
     data = ce.as_input()
@@ -86,6 +87,7 @@ def _persist_counterexample(session: Session, fn: Function, ce) -> bool:
     observed = ce.got.to_bytes(4, "little")
     session.add(Counterexample(
         function_id=fn.id,
+        candidate_id=candidate_id,
         input_blob=data,
         expected=expected,
         observed=observed,
@@ -143,14 +145,17 @@ def run_leaf_loop(session: Session, *, function_id: int, develop,
 
         still_bad = hd.run_replay(known) if known else []
         if still_bad:
-            candidate.status = "rejected"
+            candidate.status = "diverged"
             first = still_bad[0]
-            _persist_counterexample(session, fn, first)
+            _persist_counterexample(session, fn, first, candidate_id=candidate.id)
             _move(session, fn, State.FUZZING)
             _move(session, fn, State.DIVERGENT)
             divergences_seen += 1
             log(f"  iter {iteration}: REJECTED — fails {len(still_bad)} "
                 f"persisted counterexample(s)")
+            if iteration >= max_iter:
+                _move(session, fn, State.FAILED)
+                break
             _move(session, fn, State.REPAIRING)
             continue
 
@@ -181,7 +186,7 @@ def run_leaf_loop(session: Session, *, function_id: int, develop,
         # Divergent: persist the counterexample (dedup) and try a repair.
         candidate.status = "diverged"
         first = result.counterexamples[0]
-        _persist_counterexample(session, fn, first)
+        _persist_counterexample(session, fn, first, candidate_id=candidate.id)
         divergences_seen += 1
         _move(session, fn, State.DIVERGENT)
         log(f"  iter {iteration}: DIVERGENT — {first.describe()}")

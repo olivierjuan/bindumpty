@@ -35,9 +35,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+import shutil
 import struct
+import subprocess
 from pathlib import Path
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from humpty.db.events import record_event
@@ -47,10 +51,12 @@ from humpty.domain import State, can_transition
 __all__ = [
     "FingerprintError",
     "build_corpus_symbols",
+    "build_corpus_bytes",
     "imported_symbols",
     "save_corpus",
     "load_corpus",
     "fingerprint_function",
+    "fingerprint_functions",
 ]
 
 
@@ -211,6 +217,19 @@ def load_corpus(path: str | Path) -> dict[str, bytes]:
     return corpus
 
 
+def _match_prefix(raw: bytes, corpus: dict[str, bytes]) -> str | None:
+    """First corpus name whose stored byte prefix equals ``raw`` exactly.
+
+    The corpus records the *first bytes at a symbol's address*; a match is an
+    exact-byte comparison against that prefix (zero false positives, the
+    documented v0 trade-off). Ties resolve deterministically by name.
+    """
+    return next(
+        (name for name, blob in sorted(corpus.items()) if raw[: len(blob)] == blob),
+        None,
+    )
+
+
 # --- the FR-2 hook -----------------------------------------------------------
 
 
@@ -246,11 +265,7 @@ def fingerprint_function(
     raw = _vaddr_read(data, _parse_sections(data), fn.address, fn.size)
     digest = hashlib.sha256(raw).hexdigest()
 
-    matched = next(
-        (name for name, blob in sorted(load_corpus(corpus_path).items())
-         if blob == raw),
-        None,
-    )
+    matched = _match_prefix(raw, load_corpus(corpus_path))
     if matched is None:
         return None
 
@@ -275,3 +290,137 @@ def fingerprint_function(
         },
     )
     return matched
+
+
+# --- FR-2 binary sweep -------------------------------------------------------
+
+
+def _nm_layout(elf_path: str | Path) -> dict[str, dict]:
+    """Parse ``nm -S -n <elf>`` into ``name -> {addr, size}``.
+
+    Requires the GNU binutils ``nm`` (like the tests' ``_nm_addresses``). A
+    missing tool or a stripped ELF (no symbol table) yields ``{}``; callers
+    then need a ``layout`` map.
+    """
+    nm = shutil.which("nm")
+    if nm is None:
+        return {}
+    try:
+        out = subprocess.run([nm, "-S", "-n", str(elf_path)],
+                             capture_output=True, text=True, check=True).stdout
+    except (subprocess.CalledProcessError, OSError):
+        return {}
+    layout: dict[str, dict] = {}
+    for line in out.splitlines():
+        m = re.fullmatch(r"([0-9a-fA-F]+)\s+([0-9a-fA-F]+)\s+[A-Za-z]\s+(\S+)",
+                         line.strip())
+        if m:
+            layout[m.group(3)] = {
+                "addr": int(m.group(1), 16), "size": int(m.group(2), 16),
+            }
+    return layout
+
+
+def build_corpus_bytes(
+    elf_path: str | Path,
+    symbol_names: list[str],
+    layout: dict[str, tuple[int | str, int]] | None = None,
+) -> dict[str, bytes]:
+    """Extract the bytes at each named symbol from a reference ELF.
+
+    Addresses/sizes resolve per name, in order: the ``layout`` map (e.g. the
+    ground-truth call graph: ``{"fnv1a": ("0x11d0", 48), ...}``), then
+    ``nm -S`` on the ELF itself (unstripped reference builds). A name
+    resolvable by neither raises :class:`FingerprintError` — a corpus that
+    silently omits entries makes matching lie.
+
+    The recorded bytes are the symbol's full extent — the byte prefix a later
+    match compares against.
+    """
+    data = Path(elf_path).read_bytes()
+    sections = _parse_sections(data)
+    nm = _nm_layout(elf_path)
+
+    resolved: dict[str, tuple[int, int]] = {}
+    missing: list[str] = []
+    for name in symbol_names:
+        if layout is not None and name in layout:
+            addr, size = layout[name]
+            resolved[name] = (
+                int(addr, 0) if isinstance(addr, str) else int(addr), int(size),
+            )
+        elif name in nm:
+            resolved[name] = (nm[name]["addr"], nm[name]["size"])
+        else:
+            missing.append(name)
+    if missing:
+        raise FingerprintError(
+            f"{elf_path}: unresolvable symbol(s) {missing}: not in layout "
+            f"or nm -S output"
+        )
+
+    return {
+        name: _vaddr_read(data, sections, addr, size)
+        for name, (addr, size) in resolved.items()
+    }
+
+
+def fingerprint_functions(
+    session: Session,
+    *,
+    binary_sha256: str,
+    corpus_path: str | Path,
+    binary_path: str | Path,
+) -> list[str]:
+    """Fingerprint every Function row of one binary (FR-2 v0, binary sweep).
+
+    For each row whose ``binary_sha256`` matches, the function's bytes are
+    read from the ELF through the section vaddr->file-offset mapping (for the
+    PIE case-01 layout the .text region satisfies file offset == vaddr, and
+    ``_vaddr_read`` verifies against the section table rather than assuming)
+    and compared against the corpus. On a match the row gets
+    ``Function.fingerprint`` and, when ``humpty.domain.can_transition``
+    allows it, ``pending -> trusted``; if the transition is illegal, the
+    fingerprint is still recorded and the refusal is reported through the
+    ``fingerprint_match`` event payload (``transitioned: false``). Unmatched
+    rows are left untouched. Returns the matched names in row-id order.
+    """
+    rows = session.scalars(
+        select(Function).where(Function.binary_sha256 == binary_sha256)
+        .order_by(Function.id)
+    ).all()
+    data = Path(binary_path).read_bytes()
+    sections = _parse_sections(data)
+    corpus = load_corpus(corpus_path)
+
+    matched_names: list[str] = []
+    for fn in rows:
+        if fn.size is None or fn.size <= 0:
+            continue  # nothing to hash
+        raw = _vaddr_read(data, sections, fn.address, fn.size)
+        matched = _match_prefix(raw, corpus)
+        if matched is None:
+            continue
+        fn.fingerprint = matched
+        try:
+            src = State(fn.state)
+            transitioned = can_transition(src, State.TRUSTED)
+        except ValueError:
+            src, transitioned = None, False
+        if transitioned:
+            fn.state = State.TRUSTED.value
+        record_event(
+            session,
+            kind="fingerprint_match",
+            function_id=fn.id,
+            payload={
+                "match": matched,
+                "sha256": hashlib.sha256(raw).hexdigest(),
+                "size": fn.size,
+                "from_state": src.value if src is not None else fn.state,
+                "transitioned": transitioned,
+            },
+        )
+        matched_names.append(matched)
+    session.flush()
+    return matched_names

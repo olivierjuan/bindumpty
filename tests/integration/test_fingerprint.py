@@ -22,11 +22,14 @@ from sqlalchemy import create_engine
 from humpty.db import make_session_factory
 from humpty.db.models import Event, Function
 from humpty.db.session import session_scope
-from humpty.ingest import load_call_graph
+from humpty.ingest import binary_sha256, load_call_graph
 from humpty.analyze.fingerprint import (
     FingerprintError,
+    build_corpus_bytes,
     build_corpus_symbols,
     fingerprint_function,
+    fingerprint_functions,
+    load_corpus,
     save_corpus,
 )
 
@@ -179,3 +182,100 @@ def test_fingerprint_requires_binary_path(factory):
             fingerprint_function(s, function_id=fid,
                                  corpus_path="/nonexistent.json",
                                  binary_path=None)
+
+
+# --- corpus from the toy's own functions (ground truth) + binary sweep ------
+
+
+def _require_toy():
+    root_elf = os.path.join(ROOT, ELF)
+    if not os.path.exists(root_elf):
+        pytest.skip("toy01 not built (run toys/case-01-leaf/build.sh)")
+    return root_elf
+
+
+def test_build_corpus_bytes_from_ground_truth(tmp_path):
+    """The corpus seeded from the toy's own functions holds real code bytes.
+
+    Addresses and sizes come from the ground-truth call graph (the toy01
+    ELF is stripped, so nm -S cannot size it); the JSON round-trips.
+    """
+    _require_toy()
+    elf = os.path.join(ROOT, ELF)
+    cg = json.load(open(os.path.join(ROOT, CASE, "ground_truth",
+                                     "call_graph.json")))
+    layout = {f["name"]: (f["address"], int(f["size"]))
+              for f in cg["functions"]}
+    names = ["fnv1a", "digit_sum_u32", "checksum_block"]
+
+    corpus = build_corpus_bytes(elf, names, layout=layout)
+    assert set(corpus) == set(names)
+    assert len(corpus["fnv1a"]) == 48 and len(corpus["checksum_block"]) == 80
+    # Bytes equal objdump -d at the ground-truth address (fnv1a @ 0x11d0):
+    # push %rbp; mov %rsp,%rbp; mov $0x811c9dc5,%eax (FNV offset basis).
+    assert corpus["fnv1a"].startswith(bytes.fromhex("554889e5b8c59d1c81"))
+
+    path = os.path.join(tmp_path, "corpus.json")
+    save_corpus(corpus, path)
+    assert load_corpus(path) == corpus
+
+
+def test_fingerprint_functions_sweeps_binary(factory, toy, tmp_path):
+    """The binary sweep fingerprints every ingested row matching the corpus.
+
+    The corpus is seeded from the toy's own functions (ground-truth sizes);
+    the sweep must match fnv1a (Function.fingerprint == 'fnv1a', pending ->
+    trusted) and write the fingerprint_match event, leaving non-corpus rows
+    (main) untouched.
+    """
+    elf, ids = toy
+    cg = json.load(open(os.path.join(ROOT, CASE, "ground_truth",
+                                     "call_graph.json")))
+    layout = {f["name"]: (f["address"], int(f["size"]))
+              for f in cg["functions"]}
+    names = ["fnv1a", "digit_sum_u32", "checksum_block"]
+    corpus_path = os.path.join(tmp_path, "corpus.json")
+    save_corpus(build_corpus_bytes(elf, names, layout=layout), corpus_path)
+    sha = binary_sha256(elf)
+
+    with session_scope(factory) as s:
+        matched = fingerprint_functions(s, binary_sha256=sha,
+                                        corpus_path=corpus_path,
+                                        binary_path=elf)
+        by_id = {r.id: r for r in s.query(Function)}
+        evs = s.query(Event).filter_by(kind="fingerprint_match").all()
+    assert matched == ["fnv1a", "digit_sum_u32", "checksum_block"]
+    rows = {r.name: r for r in by_id.values()}
+    for n in matched:
+        assert rows[n].fingerprint == n
+        assert rows[n].state == "trusted"  # pending -> trusted is legal
+    assert rows["main"].fingerprint is None  # not in the corpus
+    assert rows["main"].state == "pending"
+    assert sorted(by_id[e.function_id].name for e in evs) == sorted(matched)
+    fnv_ev = next(e for e in evs
+                  if by_id[e.function_id].name == "fnv1a")
+    assert fnv_ev.payload_json["match"] == "fnv1a"
+    assert fnv_ev.payload_json["transitioned"] is True
+
+
+def test_fingerprint_functions_ignores_other_binaries(factory, toy, tmp_path):
+    """Rows of a different binary_sha256 are never touched by the sweep."""
+    elf, _ = toy
+    cg = json.load(open(os.path.join(ROOT, CASE, "ground_truth",
+                                     "call_graph.json")))
+    layout = {f["name"]: (f["address"], int(f["size"]))
+              for f in cg["functions"]}
+    corpus_path = os.path.join(tmp_path, "corpus.json")
+    save_corpus(build_corpus_bytes(elf, list(layout), layout=layout),
+                corpus_path)
+    with session_scope(factory) as s:
+        s.add(Function(binary_sha256="f" * 64, name="fnv1a", address=0x11d0,
+                       size=48, state="pending"))
+        s.flush()
+
+    with session_scope(factory) as s:
+        assert fingerprint_functions(s, binary_sha256="e" * 64,
+                                     corpus_path=corpus_path,
+                                     binary_path=elf) == []
+        assert s.query(Function).filter_by(binary_sha256="f" * 64).one() \
+            .fingerprint is None
