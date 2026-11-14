@@ -79,7 +79,7 @@ Work items:
 
 ### M3 — Parallelization and orchestration
 
-**Goal.** Several functions in parallel; confidence propagates upward. **Status:** **complete** — queue + bus + pools + demotion all live-verified on the S5 PG16 container (8 workers × 200 jobs: zero dupes, zero lost).
+**Goal.** Several functions in parallel; confidence propagates upward. **Status:** **complete** — queue + bus + pools + demotion all live-verified on the S5 PG16 container (8 workers × 200 jobs: zero dupes, zero lost). Graveyard-seeded vs from-scratch A/B measured on the toy (both verify; the seeded path starts from the archive's best near-miss — the LLM-cost saving lands when the gateway is live). SLURM template bash-validated; no SLURM daemon on this host, so a deployed campaign run is the one item for a SLURM cluster.
 
 - [x] PostgreSQL + job queue (NFR-4): `humpty/king/queue.py` — SKIP LOCKED claim in one statement, priority-ordered, attempts-bounded retry; live-verified (8×200: no dupes/lost).
 - [x] Event bus (FR-17): write-in-transaction (record_event) + `humpty/king/bus.py` (cursor poller = correctness path, PG LISTEN/NOTIFY thread = latency path).
