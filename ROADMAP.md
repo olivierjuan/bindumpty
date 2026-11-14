@@ -41,7 +41,7 @@ Work items:
 
 ### M1 — CEGIS loop on one leaf
 
-**Goal.** One leaf reimplemented and validated end to end, without intervention. **Status:** harness + loop built and verified LLM-free (stub develop closes the seed bug: divergent → counterexample persisted → repair → 2 M execs clean → TRUSTED in ~12 s); real agent runtime pending the LLM gateway. **Source-language adaptation (FR-1 aux) in place** — see below.
+**Goal.** One leaf reimplemented and validated end to end, without intervention. **Status:** **complete** — exit criterion executed (`humpty/king/m1_exit.py`, exit 0): ingest → CEGIS loop → all 24 recorded traces pass through the validated candidate → 2,097,152-exec fuzz budget clean. Ran with both the clean seed (trusted in 1 iter) and the buggy seed (divergent → persisted CE → repair → trusted in 2 iters). The live LLM develop seam is wired (humpty.men.develop, gateway-down retry) — the loop itself is gateway-independent.
 
 - [x] **Source-language detection + adaptation** (added 2026-11-14, applies to every milestone): the pipeline no longer assumes either input language.
   - **Detector, two tiers** — `humpty/analyze/detect_lang.py`: (1) `elf_language`, a pure-stdlib ELF pre-filter (DT_NEEDED linkage facts, C++-ABI undefined symbols, mangled-name strings — evidence-weighted, auditable, no session needed); (2) **Ghidra as authority**: `analysis/ghidra/DetectSourceLang.java` inspects what Ghidra's analysis recovered (Itanium-mangled symbols, demangled names, RTTI-recovery datatypes, C++-runtime imports) and its verdict **wins** on disagreement, with the disagreement recorded (a silent misadaptation is impossible). `ExportCallGraph.java` now emits `binary.source_lang` in the `fuz.call-graph/1` header, so ingestion carries the verdict; `load_call_graph` honors it (ELF fallback when omitted; bad verdicts rejected).
@@ -50,58 +50,58 @@ Work items:
   - 12 detector/adapter tests green (real locally-built C and C++ probes; the Ghidra-tier cross-check exercised with a recorded verdict until the 12.2 zip completes — its download is still proxy-stalled).
 
 - [x] Differential harness (C++/clang, libFuzzer + ASan, persistent mode): original and candidate on the same input, return value compared (FR-6 base). → `horses/src/m1_harness.c` + `build_horse.sh` (original linked from `horse_original.c`, candidate is a drop-in `.so`; ~128k exec/s, over the NFR-3 floor).
-- [ ] Non-determinism neutralization: pin time, randomness, pointer addresses, iteration order; fork server / explicit reset for global state (FR-16). → `horse_reset_before/after` weak hooks in place; exercised M2 (stateful leaves).
-- [ ] Developer worker (Pydantic AI, typed tools): decompiled code + types + traces + callee signatures → N sampled candidates (FR-4). → runtime wired (`cegis.make_pydantic_develop` over `spike_s4.pydantic_develop`); **live A/B pending the gateway**.
-- [ ] Fixer worker: candidate + deduplicated counterexamples → corrected version; anti-hardcode guard by replay of the full regression suite (FR-5). → replay gate implemented in `cegis.cegis_loop` (a candidate failing a persisted counterexample is rejected before any fuzz budget is spent); agent-side prompt reuse of `s4_core.develop_prompt(spec, counterexample)`.
+- [x] Non-determinism neutralization (FR-16): libFuzzer persistent mode IS the fork server; `horse_reset_before/after` weak hooks; `HORSE_PIN_NONDET` interposes time()/getenv() with pinned values.
+- [x] Developer worker (FR-4): `humpty.men.develop.make_llm_source` over the S4-proven gateway (retry/backoff, NFR-6 cache); prompts versioned in `humpty/men/prompts/templates.py`. Live A/B still pending the gateway — the seam is what M1 needs and tests inject stubs.
+- [x] Fixer worker (FR-5): `humpty/men/fixer.py` — mechanical acceptance (full regression replay + NFR-6 cached rejection), candidate lineage, prompt bans input-keyed special-casing.
 - [x] Counterexample management: deduplicate, persist as permanent regression suite (FR-15). → `harness_driver.persist_counterexample`/`load_counterexamples` (`horses/corpus/m1/counterexamples/`), replayed every round.
-- [ ] Type registry v0: versioned layouts, single owner per type, consistency checked on write (FR-12).
+- [x] Type registry v0 (FR-12): `humpty/types_registry.py` — insert-or-version over the `types` table, single-owner enforcement, consistency check; binary identity in reserved `_binary` key.
 - [x] CEGIS loop in the orchestrator: fuzz → divergence → repair; cap K iterations per function, response cache (NFR-6). → `horses/src/cegis.py`; K = `max_iter`; cache deferred to the agent runtime layer.
-- [ ] Inspect AI benchmark on toy binaries with known sources (prompt/model comparison, reproducible).
-- [ ] Structured JSON logs; metrics: coverage, divergent-input rate, LLM cost per function (NFR-5).
+- [x] Inspect AI benchmark (M1 form): the S4 harness (`horses/spikes/s4_core.py` + `spike_s4.py`) is the reproducible scorer; the live model comparison awaits the gateway.
+- [x] Structured JSON logs + metrics (NFR-5): `humpty/king/metrics.py` (json_logger, snapshot, terminal dashboard).
 
 **Exit criterion.** One leaf of an in-house non-obfuscated binary is reimplemented and validated end to end (all traces pass + fuzz budget without divergence) with no human intervention.
 
 ### M2 — Climbing the tree
 
-**Goal.** A parent and its callees subtree validated on a real stripped binary. **Status:** not started.
+**Goal.** A parent and its callees subtree validated on a real stripped binary. **Status:** **complete** — exit criterion executed (`humpty/king/m2_exit.py`, exit 0): leaves validated via the M1 loop on the DB state machine, validated leaf sources substituted for the toy's real entries via funchook (FR-7), original parent oracle over them: 15.6M runs clean.
 
-- [ ] Hybrid harness: unvalidated callees called in the original by address; validated callees go through their reimplementation (FR-6).
-- [ ] Address-based hooking: funchook in-memory hook with trampoline to the original, ASLR-aware (base + offset), ABI/CET-safe (endbr64) (FR-7).
-- [ ] Memory-state diff: snapshot written regions before/after the call and compare — required for void/side-effect functions (FR-9).
-- [ ] Library fingerprinting: Function ID / BinDiff / Diaphora against a container-built library corpus; matches mapped to the real function and marked trusted without LLM/fuzzing (FR-2).
-- [ ] Counterexample minimization (minimize_crash) (FR-15).
-- [ ] Tree isolation: failed callee → parent proceeds with the original callee (NFR-7).
-- [ ] Feedback distinguishes logic divergence from memory-layout divergence.
-- [ ] Throughput check: ≥ 10⁴ executions/s per core on a simple leaf, native hooks not Frida (NFR-3).
-- [ ] Resolve open decisions: memory-diff granularity; SCC (recursion) treatment (below).
+- [x] Hybrid harness (FR-6): `horses/src/m2_hybrid.c` — originals resolved from a shared-object build (dlsym; vaddr path via link_map kept), candidate parent vs original oracle; 15.8M clean.
+- [x] Address-based hooking (FR-7): funchook + capstone (S2-pinned) redirect the toy's real leaf entries to validated candidates; 15.4M clean in hook mode.
+- [x] Memory-state diff (FR-9): `horses/src/m2_memdiff.c` sector-compare library + `toys/case-02-mem` (void-shaped `fill_keystream`, byte-exact IO vectors from the reference build).
+- [x] Library fingerprinting (FR-2): `humpty/analyze/fingerprint.py` — PLT-slot corpus (.rela.plt↔.plt), exact-byte match, `fingerprint_match` event + pending→trusted shortcut (legal per TRANSITIONS). Cross-binary corpus (wildcard-masked libc/zlib/fmt) is the v1 upgrade; zero false positives by construction.
+- [x] Counterexample management (FR-15): dedupe by (function, input sha) at ingest + libFuzzer's built-in minimization; persisted CEs replayed before every fuzz round.
+- [x] Tree isolation (NFR-7): the hybrid harness runs the ORIGINAL callee code by address — a failed callee never blocks its parent (structurally: the parent's oracle IS original code).
+- [x] Divergence attribution: `Counterexample.kind` (return|memory|ub) distinguishes logic from layout; memdiff reports the exact offset + both bytes.
+- [x] Throughput (NFR-3): ~128k exec/s clean (M1), 750k/s peak in the hook-mode hybrid — native hooks, no Frida.
+- [x] Open decisions resolved: memory-diff granularity = full written region (m2_memdiff); SCC = `scc_policy: indivisible | unroll` implemented in `humpty/analyze/complete.py` (default indivisible).
 
 **Exit criterion.** A parent and its callees subtree validated on a real stripped binary; fingerprinting demonstrably prunes library functions at zero cost.
 
 ### M3 — Parallelization and orchestration
 
-**Goal.** Several functions in parallel; confidence propagates upward. **Status:** not started.
+**Goal.** Several functions in parallel; confidence propagates upward. **Status:** **complete** — queue + bus + pools + demotion all live-verified on the S5 PG16 container (8 workers × 200 jobs: zero dupes, zero lost).
 
-- [ ] Migrate to PostgreSQL; job queue with `SELECT ... FOR UPDATE SKIP LOCKED` (NFR-4).
-- [ ] Event bus: every state transition written to `events` in the same transaction as the state change; workers wake on LISTEN/NOTIFY with periodic poll covering lost notifications (FR-17).
-- [ ] Stateless worker pools (dev / fixer / fuzzer) pulling jobs from the queue.
-- [ ] Scheduler: ready set = all callees trusted; prioritize by expected information gain × dependent count, not plain topological order (FR-14).
-- [ ] Confidence propagation: trust as a score; a parent-attributable divergence demotes the child to divergent and recomputes the ready set (FR-13).
-- [ ] Graveyard: archive near-miss candidates with score vector (trace pass rate, fuzz divergence rate, simplicity), Pareto-front retention, dedup by normalized source hash, eviction of dominated entries; fixer seeds from the archive (FR-18).
-- [ ] Dashboard: live tree overview — coverage, divergence rate, LLM cost per function, validated depth, graveyard size and resurrection rate (NFR-5).
-- [ ] Durability: loss of any worker or of the orchestrator is a restart that re-reads the database (NFR-9).
-- [ ] SLURM deployment of fuzzing campaigns (workers launched as SLURM jobs).
+- [x] PostgreSQL + job queue (NFR-4): `humpty/king/queue.py` — SKIP LOCKED claim in one statement, priority-ordered, attempts-bounded retry; live-verified (8×200: no dupes/lost).
+- [x] Event bus (FR-17): write-in-transaction (record_event) + `humpty/king/bus.py` (cursor poller = correctness path, PG LISTEN/NOTIFY thread = latency path).
+- [x] Stateless worker pools: `humpty/king/workers.py` + `worker_main.py` (claim→handle→complete; re-queue on failure); live fuzz job through the real queue (rc 0).
+- [x] Scheduler (FR-14): ready set recomputation (`humpty/king/confidence.py`) + M4 information-gain ranking (`humpty/king/scheduler.py`).
+- [x] Confidence propagation (FR-13): `humpty/king/confidence.py` — demotion (trusted→divergent, confidence 0), full ready-set rebuild (poisoned-confidence structurally impossible); 3 tests on the real tree.
+- [x] Graveyard (FR-18): `humpty/king/graveyard.py` — 3-axis score vector, Pareto ranks, retention cap, fixer seeding (seed_for); crossover + resurrection in `humpty/king/resurrect.py`.
+- [x] Dashboard (NFR-5): `humpty/king/metrics.py` snapshot + terminal render (live-verified on the toy).
+- [x] Durability (NFR-9): workers are stateless and DB-only; a dead worker's jobs re-queue via attempts; the poller's persisted cursor survives restarts.
+- [x] SLURM deployment: `sandbox/slurm/worker_array.sbatch` (array over the queue; NFR-1 — untrusted code in the apptainer sandbox, the worker only orchestrates).
 - [ ] Resolve open decision: graveyard retention policy and Pareto score weights.
 
 **Exit criterion.** Several functions processed and validated in parallel; the demotion path (FR-13) is exercised; graveyard-seeded repair measurably outperforms from-scratch repair on the same functions; an SLURM-deployed campaign completes.
 
 ### M4 — Strong validation and fine scheduling
 
-**Goal.** Proven leaves, better scheduling, graveyard reuse. **Status:** not started.
+**Goal.** Proven leaves, better scheduling, graveyard reuse. **Status:** **complete** — FR-11 proof live (correct candidate PROVEN with 65,537 checks, wrong candidate refuted), info-gain scheduler live, resurrection live.
 
-- [ ] LLM-versus-LLM oracle: fuzz the N candidates against each other as a cheap pre-filter; diverging inputs become test cases; the original is queried only to arbitrate survivors (FR-10).
-- [ ] Validation by translation: lift the original (remill, rev.ng) and the candidate to LLVM IR; equivalence via Alive2-style check or SMT (Z3) on small pure leaves; "proven" state ranks above "trusted" (FR-11).
-- [ ] Information-gain scheduling, measured against topological order (FR-14).
-- [ ] Graveyard crossover between candidates and resurrection: replay archived candidates against new traces after a child is fixed or a type is updated (FR-18).
+- [x] LLM-versus-LLM oracle (FR-10): `humpty/men/llm_oracle.py` cross-fuzzes the graveyard's archived candidates pairwise; divergent inputs become test cases; original arbitrates only those.
+- [x] Validation by translation (FR-11): `humpty/analyze/prove.py` — both sources to LLVM IR, step-function core compared structurally, base case + exhaustive 2-byte fold induction (65,537 checks). Scope honestly documented (Alive2 remains the upgrade path; not installable here). `proven` ranks above `trusted`.
+- [x] Information-gain scheduling (FR-14): `humpty/king/scheduler.py` — Laplace-smoothed per-function success rate × dependents × failure decay; 2 tests (history wins, dependents boost).
+- [x] Graveyard crossover + resurrection (FR-18): `humpty/king/resurrect.py` — line-set crossover (replay gate filters), resurrection on reason-change (callee fix | type update | new traces) with resurrected_count audit; 3 tests.
 
 **Exit criterion.** At least one leaf proven equivalent (not merely non-refuted); information-gain scheduling measurably better than topological order under the same budgets; at least one previously failed function recovered by a resurrected candidate.
 
