@@ -131,8 +131,8 @@ def _llm_status() -> str:
     except Exception as e:
         return f"[red]{e}[/red]"
     key = os.environ.get(spec.api_key_env) if spec.api_key_env else "present"
-    key_ok = "key OK" if key else "[red]missing key "
-    key_ok += spec.api_key_env + "[/red]" if spec.api_key_env else ""
+    key_ok = ("key OK" if key
+              else f"[red]missing key {spec.api_key_env}[/red]")
     return f"[green]{spec.provider}/{spec.model}[/green] ({key_ok})"
 
 
