@@ -217,6 +217,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from humpty.project import results_dir as _results_dir
     out_root = args.out_dir or str(_results_dir())
+    os.makedirs(out_root, exist_ok=True)
     db = os.path.join(out_root, "sysval.db")
     eng = create_engine(f"sqlite:///{db}")
     ini = Config(str(ROOT / "alembic.ini"))

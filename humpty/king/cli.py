@@ -67,6 +67,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--exclude", action="append", default=[],
                     help="regex: stop call-tree traversal at matching "
                          "symbols (e.g. --exclude 'mkl_.*' --exclude 'CPX.*')")
+    ap.add_argument("--dev-stub", action="store_true",
+                    help="LLM-free deterministic develop runtime (CI path)")
     ap.add_argument("--types-dir", default=None,
                     help="directory containing reconstructed type headers "
                          "(D5.1 — passed as -I to harness/candidate compilation "
@@ -403,7 +405,11 @@ def main(argv: list[str] | None = None) -> int:
         tt.finish_phase("III", "filter libraries")
 
     from humpty.men.providers import make_develop
-    develop = make_develop(spec)
+    if getattr(args, "dev_stub", False):
+        from humpty.king.stub_develop import make_stub_develop
+        develop = make_stub_develop()
+    else:
+        develop = make_develop(spec)
 
     live = console
     with session_scope(factory) as s:
@@ -420,6 +426,7 @@ def main(argv: list[str] | None = None) -> int:
                           fuzz_budget_s=args.fuzz_budget,
                           binary_path=args.binary,
                           types_header=types_header,
+                          root_symbols=list(trees),
                           log=lambda m: live.print(f"  [dim]{m}[/dim]"))
 
     # ---- verdict tree -------------------------------------------------------

@@ -87,6 +87,7 @@ def run_subtree(session: Session, *, binary_sha256: str, develop,
                 max_iter: int = 5, fuzz_budget_s: int = 15,
                 binary_path: str | None = None, cg_json_path: str | None = None,
                 types_header: str | None = None,
+                root_symbols: list[str] | None = None,
                 log=print) -> RunReport:
     """Reconstruct every function of the binary bottom-up.
 
@@ -101,6 +102,23 @@ def run_subtree(session: Session, *, binary_sha256: str, develop,
                                                   "indivisible"))
     by_id = {f.id: f for f in session.query(Function)
              .filter(Function.binary_sha256 == binary_sha256).all()}
+
+    # --symbol scoping: restrict the plan to the functions REACHABLE from
+    # the requested roots (the ingested graph covers the whole binary)
+    if root_symbols:
+        name_to_id = {f.name: f.id for f in by_id.values()}
+        roots = [name_to_id[r] for r in root_symbols if r in name_to_id]
+        reachable: set[int] = set()
+        stack = list(roots)
+        while stack:
+            fid = stack.pop()
+            if fid in reachable:
+                continue
+            reachable.add(fid)
+            stack.extend(
+                row[0] for row in session.query(CallEdge.callee_id)
+                .filter(CallEdge.caller_id == fid).all())
+        plan.order = [fid for fid in plan.order if fid in reachable]
     fingerprinted = _fingerprinted(session, binary_sha256)
     has_callees = _callees_of(session, binary_sha256)
 
