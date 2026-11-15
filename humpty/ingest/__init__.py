@@ -30,6 +30,7 @@ __all__ = [
     "call_graph_topo_order",
     "strongly_connected_components",
     "binary_sha256",
+    "make_loadable_so",
 ]
 
 FORMAT = "fuz.call-graph/1"
@@ -48,6 +49,55 @@ def binary_sha256(elf_path: str | Path) -> str:
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def make_loadable_so(elf_path: str | Path, out_path: str | Path | None = None) -> Path:
+    """Ensure an ELF binary can be dynamically loaded (dlopened) as a shared library.
+
+    PIE executables are ET_DYN, but glibc explicitly refuses dlopen() on them if
+    the DF_1_PIE flag (0x08000000) is set in DT_FLAGS_1. This utility clears that flag
+    and any PT_INTERP program header entry in a copy, producing a loadable .so
+    that can be dlopened to resolve internal functions by address (vaddr + base).
+    """
+    src = Path(elf_path)
+    if out_path is None:
+        out = src.with_name(f"{src.name}.so")
+    else:
+        out = Path(out_path)
+
+    data = bytearray(src.read_bytes())
+    if len(data) < 64 or data[:4] != b"\x7fELF":
+        out.write_bytes(data)
+        return out
+
+    # Check 64-bit ELF little-endian
+    if data[4] == 2 and data[5] == 1:
+        e_phoff = int.from_bytes(data[32:40], "little")
+        e_phentsize = int.from_bytes(data[54:56], "little")
+        e_phnum = int.from_bytes(data[56:58], "little")
+
+        dyn_off, dyn_filesz = 0, 0
+        for i in range(e_phnum):
+            off = e_phoff + i * e_phentsize
+            p_type = int.from_bytes(data[off:off + 4], "little")
+            if p_type == 3:  # PT_INTERP -> convert to PT_NULL
+                data[off:off + 4] = (0).to_bytes(4, "little")
+            elif p_type == 2:  # PT_DYNAMIC
+                dyn_off = int.from_bytes(data[off + 8:off + 16], "little")
+                dyn_filesz = int.from_bytes(data[off + 32:off + 40], "little")
+
+        if dyn_off and dyn_filesz:
+            for i in range(0, dyn_filesz, 16):
+                tag = int.from_bytes(data[dyn_off + i:dyn_off + i + 8], "little", signed=True)
+                if tag == 0x6ffffffb:  # DT_FLAGS_1
+                    val = int.from_bytes(data[dyn_off + i + 8:dyn_off + i + 16], "little")
+                    if val & 0x08000000:  # DF_1_PIE
+                        val &= ~0x08000000
+                        data[dyn_off + i + 8:dyn_off + i + 16] = val.to_bytes(8, "little")
+
+    out.write_bytes(data)
+    out.chmod(0o755)
+    return out
 
 
 def _require(obj: dict, key: str, where: str) -> object:
@@ -261,10 +311,10 @@ def load_call_graph(session: Session, *, json_path: str | Path, binary: str | Pa
             # ranges). First entry wins — identical address is harmless, a
             # different address is an exporter bug the graph can't represent.
             prev = s_addrs.get(str(name))
-            if prev is not None and prev != int(str(fn["address"]), 0):
+            if prev is not None and prev != addr:
                 raise CallGraphError(
                     f"functions[{i}]: duplicate name {name!r} at two addresses "
-                    f"({prev:#x} and {int(str(fn['address']), 0):#x})")
+                    f"({prev:#x} and {addr:#x})")
             continue
         row = Function(
             binary_sha256=sha,
@@ -280,8 +330,8 @@ def load_call_graph(session: Session, *, json_path: str | Path, binary: str | Pa
         )
         session.add(row)
         session.flush()
-        ids[name] = row.id
-        s_addrs[name] = addr
+        ids[str(name)] = row.id
+        s_addrs[str(name)] = addr
         nodes.append(row.id)
 
     # --- edges ----------------------------------------------------------
@@ -296,9 +346,21 @@ def load_call_graph(session: Session, *, json_path: str | Path, binary: str | Pa
         kind = str(e.get("kind", "direct"))
         if kind not in _EDGE_KINDS:
             raise CallGraphError(f"edges[{i}]: bad kind {kind!r}")
-        if caller not in ids or callee not in ids:
-            raise CallGraphError(f"edges[{i}]: unknown endpoint {caller!r}/{callee!r}")
-        if caller == callee:
+        caller_id = ids.get(caller)
+        if caller_id is None:
+            cands = [vid for k, vid in ids.items() if k.startswith(f"{caller}@")]
+            if cands:
+                caller_id = cands[0]
+            else:
+                raise CallGraphError(f"edges[{i}]: unknown endpoint {caller!r}/{callee!r}")
+        callee_id = ids.get(callee)
+        if callee_id is None:
+            cands = [vid for k, vid in ids.items() if k.startswith(f"{callee}@")]
+            if cands:
+                callee_id = cands[0]
+            else:
+                raise CallGraphError(f"edges[{i}]: unknown endpoint {caller!r}/{callee!r}")
+        if caller_id == callee_id:
             raise CallGraphError(f"edges[{i}]: self-loop on {caller!r}")
         # duplicate parallel edges (e.g. two call sites to one callee, or an
         # exporter emitting per-site rows) collapse to one — the graph is a
@@ -307,9 +369,9 @@ def load_call_graph(session: Session, *, json_path: str | Path, binary: str | Pa
         if key in seen_edges:
             continue
         seen_edges.add(key)
-        edges.append((ids[caller], ids[callee], kind))
+        edges.append((caller_id, callee_id, kind))
         session.add(
-            CallEdge(caller_id=ids[caller], callee_id=ids[callee], kind=kind)
+            CallEdge(caller_id=caller_id, callee_id=callee_id, kind=kind)
         )
 
     # --- SCCs (recursion) ----------------------------------------------

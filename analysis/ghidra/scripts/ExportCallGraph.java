@@ -108,11 +108,18 @@ public class ExportCallGraph extends GhidraScript {
         // --- functions array ---------------------------------------------
         sb.append("  \"functions\": [\n");
         Map<Function, String> id = new IdentityHashMap<>();
+        Map<String, Address> seenNames = new HashMap<>();
         boolean first = true;
         for (Function f : fns) {
-            String name = demangledOrLabel(f);
-            id.put(f, name);
+            String baseName = demangledOrLabel(f);
             Address a = f.getEntryPoint();
+            String name = baseName;
+            if (seenNames.containsKey(baseName) && !seenNames.get(baseName).equals(a)) {
+                name = baseName + "@0x" + Long.toHexString(a.getOffset());
+            } else {
+                seenNames.put(baseName, a);
+            }
+            id.put(f, name);
             boolean inPrimary = primary != null && a.compareTo(primary.getStart()) >= 0
                     && a.compareTo(primary.getEnd()) <= 0;
             sb.append((first ? "" : ",\n") + "    {")

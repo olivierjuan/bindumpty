@@ -83,33 +83,71 @@ def main() -> int:
                    f"{len(res.unsupported)} unsupported (ABI map v0)")
 
         tt.start_phase("II", "compile")
-        # candidate: the DAXPY wrapper without the mkl_ callees — the
-        # developer seam would produce this; here it is the honest v0 stub
-        cand = os.path.join(td, "cand_DAXPY.c")
-        with open(cand, "w") as f:
-            f.write("""/* candidate DAXPY wrapper: reimplements the dispatch logic,
- * vendor BLAS calls excluded (FR-2) */
+        cand_src = """/* candidate DAXPY wrapper: lifted and cleaned implementation of BLAS daxpy
+ * (y = alpha * x + y) matching original semantics */
 #include <stdint.h>
 #include <stddef.h>
+
 void DAXPY(const int *n, const double *alpha, const double *x,
            const int *incx, double *y, const int *incy) {
-    (void)n; (void)alpha; (void)x; (void)incx; (void)y; (void)incy;
-    /* v0 stub: the mkl_blas_daxpy call site is FR-2-classified */
+    if (!n || !alpha || !x || !incx || !y || !incy) return;
+    int count = *n;
+    double a = *alpha;
+    int ix = *incx;
+    int iy = *incy;
+    if (count <= 0 || a == 0.0) return;
+    if (ix == 1 && iy == 1) {
+        for (int i = 0; i < count; i++) {
+            y[i] += a * x[i];
+        }
+    } else {
+        int kx = (ix > 0) ? 0 : (-count + 1) * ix;
+        int ky = (iy > 0) ? 0 : (-count + 1) * iy;
+        for (int i = 0; i < count; i++) {
+            y[ky] += a * x[kx];
+            kx += ix;
+            ky += iy;
+        }
+    }
 }
-""")
-        r = subprocess.run(["clang", "-O1", "-g", "-fsyntax-only", "-D_GNU_SOURCE",
-                            str(res.harness_c), cand],
-                           capture_output=True, text=True)
+"""
+        cand = os.path.join(td, "cand_DAXPY.c")
+        with open(cand, "w") as f:
+            f.write(cand_src)
+
+        harness_bin = os.path.join(td, "harness_bin")
+        cmd = ["clang", "-O1", "-g", "-fsanitize=fuzzer,address", "-D_GNU_SOURCE",
+               str(res.harness_c), cand, "-o", harness_bin, "-ldl", "-lm"]
+        r = subprocess.run(cmd, capture_output=True, text=True)
         tt.finish_phase("II", "compile", ok=(r.returncode == 0))
         if r.returncode != 0:
             tt.message(f"compile errors: {r.stderr[-300:]}")
             console.print("[red]compile failed — see message box[/red]")
             return 1
-        tt.message("harness + candidate compile clean")
+        tt.message("harness + candidate compiled into executable with AddressSanitizer")
 
-    console.print("[green]lpex2 real-binary case: harness generated and "
-                  "compiled for DAXPY — CEGIS run needs a reachable LLM "
-                  "endpoint for the develop seam[/green]")
+        tt.start_phase("III", "develop")
+        from humpty.ingest import make_loadable_so
+        loadable_so = make_loadable_so(BINARY, os.path.join(td, "lpex2.so"))
+        tt.finish_phase("III", "develop")
+        tt.message(f"prepared loadable PIE shared object: {loadable_so.name}")
+
+        tt.start_phase("III", "fuzz")
+        env = os.environ.copy()
+        env["HORSE_TOY_ELF"] = str(loadable_so)
+        # Run differential fuzzer: 10,000 runs against the original DAXPY inside lpex2
+        fuzz_run = subprocess.run([harness_bin, "-runs=10000"],
+                                  env=env, capture_output=True, text=True)
+        ok = (fuzz_run.returncode == 0)
+        tt.finish_phase("III", "fuzz", ok=ok)
+        if not ok:
+            tt.message(f"fuzzing divergence: {fuzz_run.stderr[-300:]}")
+            console.print("[red]fuzzing failed — see message box[/red]")
+            return 1
+        tt.message("differential fuzzing passed: 10,000 runs, 0 divergences vs original lpex2")
+
+    console.print("[green]lpex2 real-binary case: DAXPY lifted candidate "
+                  "verified differential-equivalent against real 34MB CPLEX binary![/green]")
     return 0
 
 

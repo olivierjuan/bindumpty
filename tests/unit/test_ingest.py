@@ -26,6 +26,7 @@ from humpty.ingest import (
     binary_sha256,
     call_graph_topo_order,
     load_call_graph,
+    make_loadable_so,
     strongly_connected_components,
 )
 from humpty.domain import State
@@ -201,3 +202,22 @@ def test_load_is_rolled_back_on_failure(factory, tmp_path):
     # Row count unchanged from the first (committed) load.
     with session_scope(factory) as s:
         assert s.query(Function).count() == 2
+
+
+def test_make_loadable_so_converts_pie(tmp_path):
+    """Test that make_loadable_so produces a dlopen-compatible .so from a PIE binary."""
+    import ctypes
+    toy_elf = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                           "toys", "case-01-leaf", "build", "toy01")
+    if not os.path.exists(toy_elf):
+        pytest.skip("toy01 not built")
+    out_so = tmp_path / "toy01.loadable.so"
+    res = make_loadable_so(toy_elf, out_so)
+    assert res == out_so
+    assert out_so.exists()
+    # verify glibc dlopen accepts the converted .so
+    lib = ctypes.CDLL(str(out_so))
+    assert lib is not None
+
+
+

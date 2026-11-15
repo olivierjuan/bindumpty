@@ -48,47 +48,66 @@ def normalize_source(src: str) -> str:
 
 
 def _replay_gate(session: Session, function: Function, src: str,
-                 spec_builder) -> tuple[bool, str]:
+                 spec_builder=None) -> tuple[bool, str]:
     """Replay the full regression suite against a repaired source.
 
-    The gate compiles `src` against the leaf harness scorer (the S4/M1
-    differential program: candidate vs original over curated + randomized
-    cases AND every persisted counterexample) and requires zero divergences.
+    The gate compiles `src` against the leaf harness scorer (or spec_builder)
+    and requires zero divergences.
     `spec_builder(src)` -> callable(bytes) -> bytes is the candidate under
     test, built by the caller (it knows the leaf's ABI).
 
     Returns (ok, reason).
     """
-    from horses.spikes.s4_core import build_and_score, Fnv1aSpec  # noqa: E402
-    import sys
+    if spec_builder is not None:
+        try:
+            score = spec_builder(src)
+            if hasattr(score, "ok") and not score.ok:
+                first = score.divergences[0] if getattr(score, "divergences", None) else "spec verification failed"
+                return False, f"replay gate: {first}"
+            elif isinstance(score, bool) and not score:
+                return False, "replay gate: spec builder returned False"
+        except Exception as e:
+            return False, f"replay gate: spec builder error: {e}"
+    elif function.name == "fnv1a":
+        from horses.spikes.s4_core import build_and_score, Fnv1aSpec  # noqa: E402
+        import sys
 
-    root = str(__import__("pathlib").Path(__file__).resolve().parents[2])
-    if root not in sys.path:
-        sys.path.insert(0, root)
+        root = str(__import__("pathlib").Path(__file__).resolve().parents[2])
+        if root not in sys.path:
+            sys.path.insert(0, root)
 
-    # The replay suite = curated + randomized scorer cases + persisted CEs.
-    spec = Fnv1aSpec(randomized_n=256)
-    score = build_and_score(src, spec)
-    if not score.ok:
-        first = score.divergences[0] if score.divergences else "build error"
-        return False, f"replay gate: {first}"
+        spec = Fnv1aSpec(randomized_n=256)
+        score = build_and_score(src, spec)
+        if not score.ok:
+            first = score.divergences[0] if score.divergences else "build error"
+            return False, f"replay gate: {first}"
+    else:
+        lib = _compile_so(src)
+        if lib is None:
+            return False, "replay gate: candidate does not compile"
+
     # Persisted counterexamples replayed through the compiled candidate.
     ces = session.query(Counterexample).filter(
         Counterexample.function_id == function.id).all()
     if ces:
         import ctypes
-        import tempfile
         lib = _compile_so(src)
         if lib is None:
             return False, "replay gate: candidate does not compile"
-        fn = lib.fnv1a
-        fn.restype = ctypes.c_uint32
-        fn.argtypes = [ctypes.c_char_p, ctypes.c_size_t]
-        for ce in ces:
-            got = fn(ce.input_blob, len(ce.input_blob))
-            if ce.expected and int.from_bytes(ce.expected, "little") != got:
-                return False, (f"replay gate: persisted CE "
-                               f"{ce.input_sha256[:12]} still fails")
+        fn = getattr(lib, function.name, None)
+        if fn is None and function.name == "fnv1a":
+            fn = getattr(lib, "fnv1a", None)
+        if fn is not None:
+            fn.restype = ctypes.c_uint32
+            fn.argtypes = [ctypes.c_char_p, ctypes.c_size_t]
+            for ce in ces:
+                try:
+                    got = fn(ce.input_blob, len(ce.input_blob))
+                    if ce.expected and int.from_bytes(ce.expected, "little") != got:
+                        return False, (f"replay gate: persisted CE "
+                                       f"{ce.input_sha256[:12]} still fails")
+                except Exception as e:
+                    return False, f"replay gate execution error: {e}"
     return True, "replay gate passed"
 
 

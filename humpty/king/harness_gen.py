@@ -143,33 +143,134 @@ def generate_harness(cg_json: str | Path, binary: str | Path,
         supported.append(name)
 
     # the root's differential compare: candidate(root args) vs the
-    # original root via its resolved pointer. v0 supports the u32-return,
-    # (ptr, size) / (u32) argument families.
+    # original root via its resolved pointer. Supports:
+    # 1. Byte buffer folds: u32/u64/int (const uint8_t*, size_t)
+    # 2. Scalar-to-scalar: u32/int (u32/int/size_t)
+    # 3. Vector/BLAS: void DAXPY(const int*, const double*, const double*, const int*, double*, const int*)
+    # 4. Vector/DDOT: double DDOT(const int*, const double*, const int*, const double*, const int*)
+    # 5. Out-buffer memdiff: void (const uint8_t*, size_t, uint8_t*, size_t)
     root_compare = ""
     cand_decl = ""    # no candidate → no declaration needed
     if root_symbol:
         f = fns.get(root_symbol, {})
         sig = _parse_sig(f.get("demangled_sig"))
-        # the candidate TU defines the root function under its real name;
-        # declare it so the harness's compare loop links cleanly
-        cand_decl = (f"uint32_t {root_symbol}(const uint8_t *data, "
-                     "size_t size);\n")
         if sig:
             ret, args = sig
-            cand_sym = f"cand_{root_symbol}"
-            arg_use = ", ".join(f"a{i}" for i in range(len(args))) or ""
-            if len(args) == 2 and "uint8_t" in args[0]:
+            arg_decl = ", ".join(f"{t} a{i}" for i, t in enumerate(args)) or "void"
+            cand_decl = f"{ret} {root_symbol}({arg_decl});\n"
+
+            # Family 1: (const uint8_t*, size_t) -> u32/u64/int
+            if len(args) == 2 and "uint8_t" in args[0] and ret in ("uint32_t", "uint64_t", "int"):
                 root_compare = (
                     "\nint LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {\n"
-                    f"    uint32_t got = {root_symbol}(data, size);  "
+                    f"    {ret} got = {root_symbol}(data, size);  "
                     "/* candidate TU defines this name */\n"
-                    f"    uint32_t want = g_orig_{root_symbol}(data, size);\n"
+                    f"    {ret} want = g_orig_{root_symbol}(data, size);\n"
                     "    if (got != want) {\n"
                     '        fprintf(stderr, "HORSE DIVERGENCE len=%zu input=", size);\n'
                     "        for (size_t i = 0; i < size && i < 4096; i++) "
                     'fprintf(stderr, "%02x", data[i]);\n'
-                    '        fprintf(stderr, " got=0x%08X want=0x%08X\\n", '
-                    "got, want);\n"
+                    '        fprintf(stderr, " got=0x%08lX want=0x%08lX\\n", '
+                    "(unsigned long)got, (unsigned long)want);\n"
+                    "        abort();\n"
+                    "    }\n"
+                    "    return 0;\n"
+                    "}\n")
+            # Family 2: single scalar argument, e.g. int digit_sum_u32(uint32_t)
+            elif len(args) == 1 and args[0] in ("uint32_t", "int", "uint64_t", "size_t") and ret in ("uint32_t", "int", "uint64_t"):
+                root_compare = (
+                    "\nint LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {\n"
+                    f"    if (size < sizeof({args[0]})) return 0;\n"
+                    f"    {args[0]} in;\n"
+                    "    memcpy(&in, data, sizeof(in));\n"
+                    f"    {ret} got = {root_symbol}(in);\n"
+                    f"    {ret} want = g_orig_{root_symbol}(in);\n"
+                    "    if (got != want) {\n"
+                    '        fprintf(stderr, "HORSE DIVERGENCE scalar input: got=%lld want=%lld\\n", '
+                    '(long long)got, (long long)want);\n'
+                    "        abort();\n"
+                    "    }\n"
+                    "    return 0;\n"
+                    "}\n")
+            # Family 3: BLAS DAXPY vector convention: void DAXPY(const int *n, const double *alpha, const double *x, const int *incx, double *y, const int *incy)
+            elif (ret == "void" and len(args) == 6
+                  and args[0] in ("const int *", "int *")
+                  and args[1] in ("const double *", "double *")
+                  and args[2] in ("const double *", "double *")
+                  and args[3] in ("const int *", "int *")
+                  and args[4] in ("double *",)
+                  and args[5] in ("const int *", "int *")):
+                root_compare = (
+                    "\nint LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {\n"
+                    "    if (size < 4) return 0;\n"
+                    "    int n = (int)(data[0] % 8) + 1;\n"
+                    "    double alpha = 1.0;\n"
+                    "    if (size >= 8) {\n"
+                    "        alpha = (double)(int8_t)data[1];\n"
+                    "        if (alpha == 0.0) alpha = 1.0;\n"
+                    "    }\n"
+                    "    int incx = 1, incy = 1;\n"
+                    "    double x[8];\n"
+                    "    double y_orig[8];\n"
+                    "    double y_cand[8];\n"
+                    "    for (int i = 0; i < 8; i++) {\n"
+                    "        x[i] = (double)(data[i % size]) / 10.0;\n"
+                    "        y_orig[i] = (double)(data[(i + 1) % size]) / 10.0;\n"
+                    "        y_cand[i] = y_orig[i];\n"
+                    "    }\n"
+                    f"    g_orig_{root_symbol}(&n, &alpha, x, &incx, y_orig, &incy);\n"
+                    f"    {root_symbol}(&n, &alpha, x, &incx, y_cand, &incy);\n"
+                    "    for (int i = 0; i < n; i++) {\n"
+                    "        double diff = fabs(y_orig[i] - y_cand[i]);\n"
+                    "        double denom = fabs(y_orig[i]) + 1e-12;\n"
+                    "        if (diff / denom > 1e-9) {\n"
+                    '            fprintf(stderr, "HORSE DIVERGENCE at %d: cand=%f orig=%f\\n", i, y_cand[i], y_orig[i]);\n'
+                    "            abort();\n"
+                    "        }\n"
+                    "    }\n"
+                    "    return 0;\n"
+                    "}\n")
+            # Family 4: BLAS DDOT dot product
+            elif (ret in ("double", "float") and len(args) == 5
+                  and args[0] in ("const int *", "int *")
+                  and args[1] in ("const double *", "double *")
+                  and args[2] in ("const int *", "int *")
+                  and args[3] in ("const double *", "double *")
+                  and args[4] in ("const int *", "int *")):
+                root_compare = (
+                    "\nint LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {\n"
+                    "    if (size < 4) return 0;\n"
+                    "    int n = (int)(data[0] % 8) + 1;\n"
+                    "    int incx = 1, incy = 1;\n"
+                    "    double x[8], y[8];\n"
+                    "    for (int i = 0; i < 8; i++) {\n"
+                    "        x[i] = (double)(data[i % size]) / 10.0;\n"
+                    "        y[i] = (double)(data[(i + 1) % size]) / 10.0;\n"
+                    "    }\n"
+                    f"    double want = g_orig_{root_symbol}(&n, x, &incx, y, &incy);\n"
+                    f"    double got = {root_symbol}(&n, x, &incx, y, &incy);\n"
+                    "    double diff = fabs(got - want);\n"
+                    "    double denom = fabs(want) + 1e-12;\n"
+                    "    if (diff / denom > 1e-9) {\n"
+                    '        fprintf(stderr, "HORSE DIVERGENCE DDOT: got=%f want=%f\\n", got, want);\n'
+                    "        abort();\n"
+                    "    }\n"
+                    "    return 0;\n"
+                    "}\n")
+            # Family 5: Memory state diff (void func with out pointer and sizes)
+            elif ret == "void" and len(args) == 4 and "uint8_t *" in args[2]:
+                root_compare = (
+                    "\nint LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {\n"
+                    "    if (size < 4) return 0;\n"
+                    "    size_t in_len = (size_t)(data[0] % 16) + 1;\n"
+                    "    size_t out_len = (size_t)(data[1] % 64) + 1;\n"
+                    "    uint8_t out_cand[128], out_orig[128];\n"
+                    "    memset(out_cand, 0xaa, sizeof(out_cand));\n"
+                    "    memset(out_orig, 0xaa, sizeof(out_orig));\n"
+                    f"    {root_symbol}(data + 2, in_len, out_cand, out_len);\n"
+                    f"    g_orig_{root_symbol}(data + 2, in_len, out_orig, out_len);\n"
+                    "    if (memcmp(out_cand, out_orig, out_len) != 0) {\n"
+                    '        fprintf(stderr, "HORSE DIVERGENCE memdiff out_len=%zu\\n", out_len);\n'
                     "        abort();\n"
                     "    }\n"
                     "    return 0;\n"
@@ -182,6 +283,7 @@ def generate_harness(cg_json: str | Path, binary: str | Path,
                     "    return 0; /* signature family not fuzzable in v0 */\n"
                     "}\n")
         else:
+            cand_decl = f"uint32_t {root_symbol}(const uint8_t *data, size_t size);\n"
             root_compare = (
                 "\nint LLVMFuzzerTestOneInput(const uint8_t *data, "
                 "size_t size) {\n"
@@ -199,24 +301,24 @@ def generate_harness(cg_json: str | Path, binary: str | Path,
  * symbol. First divergence is a counterexample. */
 #include <dlfcn.h>
 #include <link.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 {chr(10).join(protos)}
 
 static void *g_handle;
-static const char *g_so_path;
 
 static void die(const char *m) {{ fprintf(stderr, "HARNESS: %s\\n", m); exit(2); }}
 
 static void *resolve_original(unsigned long vaddr, const char *sym) {{
-    void *h = dlopen(g_so_path, RTLD_NOW | RTLD_LOCAL);
-    if (!h) die(dlerror());
-    void *s = dlsym(h, sym);
+    if (!g_handle) die("g_handle is NULL");
+    void *s = dlsym(g_handle, sym);
     if (s) return s;
     struct link_map *lm;
-    if (dlinfo(h, RTLD_DI_LINKMAP, &lm) != 0) die("dlinfo failed");
+    if (dlinfo(g_handle, RTLD_DI_LINKMAP, &lm) != 0) die("dlinfo failed");
     return (void *)((char *)lm->l_addr + vaddr);
 }}
 
@@ -236,14 +338,6 @@ int LLVMFuzzerInitialize(int *argc, char ***argv) {{
 
 {cand_decl}{root_compare}
 """
-    build_sh = f"""#!/usr/bin/env bash
-# GENERATED by humpty.king.harness_gen
-set -euo pipefail
-cd "$(dirname "$0")/../../.."
-clang -O1 -g -fsanitize=fuzzer,address -D_GNU_SOURCE \\
-    "$(dirname "{out_dir}")/harness.c" \\
-    -o "{out_dir}/harness" -ldl
-"""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     cand_path = None
@@ -252,6 +346,15 @@ clang -O1 -g -fsanitize=fuzzer,address -D_GNU_SOURCE \\
         cand_path.write_text(root_candidate_src)
     hc = out / "harness.c"
     hc.write_text(harness_c)
+    cand_arg = f'"{cand_path}"' if cand_path else ""
+    build_sh = f"""#!/usr/bin/env bash
+# GENERATED by humpty.king.harness_gen
+set -euo pipefail
+cd "$(dirname "$0")/../../.."
+clang -O1 -g -fsanitize=fuzzer,address -D_GNU_SOURCE \\
+    "{hc}" {cand_arg} \\
+    -o "{out}/harness" -ldl -lm
+"""
     bs = out / "build_harness.sh"
     bs.write_text(build_sh)
     bs.chmod(0o755)

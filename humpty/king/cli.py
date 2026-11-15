@@ -269,6 +269,8 @@ def main(argv: list[str] | None = None) -> int:
 
     from humpty.king.steps import step as step_ctx
     with tt:
+        tt.start_phase("I", "backend run")
+        tt.message(f"exporting call graph via {args.backend} from {Path(args.binary).name}")
         with step_ctx(console, f"export call graph ({args.backend})") as st:
             import subprocess as _sp
 

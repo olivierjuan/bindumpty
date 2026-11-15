@@ -42,9 +42,13 @@ def make_llm_source(model: str | None = None, cache_dir: str | None = None):
     cache = LLMResponseCache(cache_dir)
 
     def llm_source(spec, counterexample=None, seed: int = 0) -> str:
-        from humpty.men.prompts.templates import developer_prompt
-        prompt = developer_prompt(spec, [], 3) if counterexample is None else \
-            developer_prompt(spec, [], 3)
+        from humpty.men.prompts.templates import developer_prompt, fixer_prompt
+        if counterexample is None:
+            prompt = developer_prompt(spec, [], 3)
+        else:
+            ces = [counterexample] if isinstance(counterexample, dict) else []
+            cand_src = spec.get("candidate_src", "")
+            prompt = fixer_prompt(spec, cand_src, ces)
         hit = cache.get(prompt, model, seed)
         if hit is not None:
             return hit

@@ -54,3 +54,36 @@ def test_generated_harness_compiles(tmp_path):
     r = subprocess.run(["clang", "-O1", "-fsyntax-only", "-D_GNU_SOURCE",
                         str(res.harness_c)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr[-400:]
+
+
+def test_generate_daxpy_harness_compiles(tmp_path):
+    import subprocess
+    daxpy_doc = {
+        "format": "fuz.call-graph/1",
+        "binary": {"sha256": "0" * 64, "arch": "x86-64", "kind": "elf"},
+        "functions": [
+            {"name": "DAXPY", "address": "0xcb4f80", "size": 128,
+             "demangled_sig": "void DAXPY(const int *, const double *, const double *, const int *, double *, const int *)"},
+        ],
+        "edges": [],
+    }
+    cg = tmp_path / "cg_daxpy.json"
+    cg.write_text(json.dumps(daxpy_doc))
+    cand_src = """#include <stddef.h>
+void DAXPY(const int *n, const double *alpha, const double *x, const int *incx, double *y, const int *incy) {
+    if (!n || !alpha || !x || !incx || !y || !incy) return;
+    int count = *n; double a = *alpha;
+    for (int i = 0; i < count; i++) y[i] += a * x[i];
+}
+"""
+    res = generate_harness(cg, "lpex2", tmp_path / "h_daxpy", root_symbol="DAXPY", root_candidate_src=cand_src)
+    assert "DAXPY" in res.functions
+    assert not res.unsupported
+    src = res.harness_c.read_text()
+    assert "g_orig_DAXPY" in src
+    assert "fabs" in src
+    r = subprocess.run(["clang", "-O1", "-fsyntax-only", "-D_GNU_SOURCE",
+                        str(res.harness_c), str(res.candidate_c)],
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr[-400:]
+
