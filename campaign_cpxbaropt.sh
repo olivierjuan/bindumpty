@@ -98,6 +98,15 @@ BARRIER_DIR="/home/D01856/ermite/cplex_rea/barrier"
 RUN_DIR="${ROOT}/bindumpty-project/runs/campaign_$(date +%Y%m%d_%H%M%S)"
 DB_PATH="${RUN_DIR}/run.db"
 
+# Auto-detect DynamoRIO home
+if [[ -z "${DYNAMORIO_HOME:-}" ]]; then
+    if [[ -d "${ROOT}/.venv/dynamorio" ]]; then
+        export DYNAMORIO_HOME="${ROOT}/.venv/dynamorio"
+    elif [[ -d "${HOME}/dynamorio" ]]; then
+        export DYNAMORIO_HOME="${HOME}/dynamorio"
+    fi
+fi
+
 mkdir -p "$RUN_DIR"
 
 # Color helpers

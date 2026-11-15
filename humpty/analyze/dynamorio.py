@@ -23,6 +23,7 @@ import json
 import os
 import struct
 import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -34,16 +35,19 @@ __all__ = ["DrResult", "dr_home", "client_path", "dr_record",
 SNAP_MAGIC = b"DRSNAP02"
 
 
-_PERSISTENT_ROOT = Path.home() / "dynamorio"
+_VENV_ROOT = Path(__file__).resolve().parents[2] / ".venv" / "dynamorio"
 
 
 def dr_home() -> Path:
     """DynamoRIO installation root.
 
-    Resolution order: $DYNAMORIO_HOME, then the persistent install at
-    ~/dynamorio. /tmp is deliberately NOT a fallback — it is wiped
-    between sessions (a DR tree installed there disappeared once
-    already)."""
+    Resolution order:
+      1. $DYNAMORIO_HOME
+      2. .venv/dynamorio relative to package root
+      3. sys.prefix / "dynamorio" (active virtualenv)
+      4. ~/dynamorio (user home)
+      5. /tmp/DynamoRIO-Linux-* (fallback)
+    """
     def has_drrun(root: Path) -> bool:
         return ((root / "build" / "bin64" / "drrun").exists()
                 or (root / "bin64" / "drrun").exists())
@@ -51,16 +55,22 @@ def dr_home() -> Path:
     env = os.environ.get("DYNAMORIO_HOME")
     if env and has_drrun(Path(env).expanduser()):
         return Path(env).expanduser()
-    if has_drrun(_PERSISTENT_ROOT):
-        return _PERSISTENT_ROOT
-    for cand in sorted(Path("/tmp").glob("DynamoRIO-Linux-*")):
+
+    candidates = [
+        _VENV_ROOT,
+        Path(sys.prefix) / "dynamorio",
+        Path.home() / "dynamorio",
+    ] + sorted(Path("/tmp").glob("DynamoRIO-Linux-*"))
+
+    for cand in candidates:
         if has_drrun(cand):
             return cand
+
     raise RuntimeError(
-        "DynamoRIO not found: set DYNAMORIO_HOME, or install it "
-        f"persistently at {_PERSISTENT_ROOT} "
+        "DynamoRIO not found: set DYNAMORIO_HOME, or install it into the "
+        f"venv at {_VENV_ROOT} "
         "(curl -L <release-url> | tar xz -C "
-        f"{_PERSISTENT_ROOT.parent} --strip-components=1)")
+        f"{_VENV_ROOT.parent} --strip-components=1)")
 
 
 def client_path(edges: bool = False) -> Path:

@@ -216,7 +216,7 @@ CMAKE_TAPI:FILEPATH=CMAKE_TAPI-NOTFOUND
 CMAKE_VERBOSE_MAKEFILE:BOOL=FALSE
 
 //No help, variable specified on the command line.
-DynamoRIO_DIR:UNINITIALIZED=/tmp/DynamoRIO-Linux-11.91.20771/cmake
+DynamoRIO_DIR:UNINITIALIZED=/home/D01856/bindumpty/.venv/dynamorio/cmake
 
 //Value Computed by CMake
 bindumpty_client_BINARY_DIR:STATIC=/home/D01856/bindumpty/analysis/dynamorio/build

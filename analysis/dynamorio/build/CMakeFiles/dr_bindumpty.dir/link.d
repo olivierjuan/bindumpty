@@ -4,11 +4,11 @@ libdr_bindumpty.so: \
   /usr/lib/gcc/x86_64-linux-gnu/14/crtbeginS.o \
   /usr/lib/gcc/x86_64-linux-gnu/14/libgcc.a \
   CMakeFiles/dr_bindumpty.dir/dr_bindumpty.cpp.o \
-  /tmp/DynamoRIO-Linux-11.91.20771/ext/lib64/debug/libdrwrap.so \
-  /tmp/DynamoRIO-Linux-11.91.20771/ext/lib64/debug/libdrsyms.so \
-  /tmp/DynamoRIO-Linux-11.91.20771/ext/lib64/debug/libdrmgr.so \
-  /tmp/DynamoRIO-Linux-11.91.20771/ext/lib64/debug/libdrcontainers.a \
-  /tmp/DynamoRIO-Linux-11.91.20771/lib64/debug/libdynamorio.so \
+  /home/D01856/bindumpty/.venv/dynamorio/ext/lib64/debug/libdrwrap.so \
+  /home/D01856/bindumpty/.venv/dynamorio/ext/lib64/debug/libdrsyms.so \
+  /home/D01856/bindumpty/.venv/dynamorio/ext/lib64/debug/libdrmgr.so \
+  /home/D01856/bindumpty/.venv/dynamorio/ext/lib64/debug/libdrcontainers.a \
+  /home/D01856/bindumpty/.venv/dynamorio/lib64/debug/libdynamorio.so \
   /usr/lib/gcc/x86_64-linux-gnu/14/libstdc++.so \
   /usr/lib/gcc/x86_64-linux-gnu/14/../../../x86_64-linux-gnu/libm.so \
   /usr/lib/gcc/x86_64-linux-gnu/14/../../../x86_64-linux-gnu/libm.so \
@@ -44,15 +44,15 @@ libdr_bindumpty.so: \
 
 CMakeFiles/dr_bindumpty.dir/dr_bindumpty.cpp.o:
 
-/tmp/DynamoRIO-Linux-11.91.20771/ext/lib64/debug/libdrwrap.so:
+/home/D01856/bindumpty/.venv/dynamorio/ext/lib64/debug/libdrwrap.so:
 
-/tmp/DynamoRIO-Linux-11.91.20771/ext/lib64/debug/libdrsyms.so:
+/home/D01856/bindumpty/.venv/dynamorio/ext/lib64/debug/libdrsyms.so:
 
-/tmp/DynamoRIO-Linux-11.91.20771/ext/lib64/debug/libdrmgr.so:
+/home/D01856/bindumpty/.venv/dynamorio/ext/lib64/debug/libdrmgr.so:
 
-/tmp/DynamoRIO-Linux-11.91.20771/ext/lib64/debug/libdrcontainers.a:
+/home/D01856/bindumpty/.venv/dynamorio/ext/lib64/debug/libdrcontainers.a:
 
-/tmp/DynamoRIO-Linux-11.91.20771/lib64/debug/libdynamorio.so:
+/home/D01856/bindumpty/.venv/dynamorio/lib64/debug/libdynamorio.so:
 
 /usr/lib/gcc/x86_64-linux-gnu/14/libstdc++.so:
 

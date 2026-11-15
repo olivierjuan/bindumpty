@@ -4,7 +4,7 @@
 # compile CXX with /usr/bin/c++
 CXX_DEFINES = -DLINUX -DX86_64 -Ddr_edges_EXPORTS
 
-CXX_INCLUDES = -I/tmp/DynamoRIO-Linux-11.91.20771/cmake/../include -I/tmp/DynamoRIO-Linux-11.91.20771/cmake/../ext/include
+CXX_INCLUDES = -I/home/D01856/bindumpty/.venv/dynamorio/cmake/../include -I/home/D01856/bindumpty/.venv/dynamorio/cmake/../ext/include
 
 CXX_FLAGS = -std=gnu++17 -fPIC
 

@@ -96,7 +96,7 @@ dr_edges_EXTERNAL_OBJECTS =
 libdr_edges.so: CMakeFiles/dr_edges.dir/dr_edges.cpp.o
 libdr_edges.so: CMakeFiles/dr_edges.dir/build.make
 libdr_edges.so: CMakeFiles/dr_edges.dir/compiler_depend.ts
-libdr_edges.so: /tmp/DynamoRIO-Linux-11.91.20771/lib64/debug/libdynamorio.so
+libdr_edges.so: /home/D01856/bindumpty/.venv/dynamorio/lib64/debug/libdynamorio.so
 libdr_edges.so: CMakeFiles/dr_edges.dir/link.txt
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/D01856/bindumpty/analysis/dynamorio/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Linking CXX shared library libdr_edges.so"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/dr_edges.dir/link.txt --verbose=$(VERBOSE)

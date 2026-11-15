@@ -4,7 +4,7 @@ libdr_edges.so: \
   /usr/lib/gcc/x86_64-linux-gnu/14/crtbeginS.o \
   /usr/lib/gcc/x86_64-linux-gnu/14/libgcc.a \
   CMakeFiles/dr_edges.dir/dr_edges.cpp.o \
-  /tmp/DynamoRIO-Linux-11.91.20771/lib64/debug/libdynamorio.so \
+  /home/D01856/bindumpty/.venv/dynamorio/lib64/debug/libdynamorio.so \
   /usr/lib/gcc/x86_64-linux-gnu/14/libstdc++.so \
   /usr/lib/gcc/x86_64-linux-gnu/14/../../../x86_64-linux-gnu/libm.so \
   /usr/lib/gcc/x86_64-linux-gnu/14/../../../x86_64-linux-gnu/libm.so \
@@ -40,7 +40,7 @@ libdr_edges.so: \
 
 CMakeFiles/dr_edges.dir/dr_edges.cpp.o:
 
-/tmp/DynamoRIO-Linux-11.91.20771/lib64/debug/libdynamorio.so:
+/home/D01856/bindumpty/.venv/dynamorio/lib64/debug/libdynamorio.so:
 
 /usr/lib/gcc/x86_64-linux-gnu/14/libstdc++.so:
 
