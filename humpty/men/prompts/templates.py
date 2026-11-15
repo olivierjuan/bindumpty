@@ -17,7 +17,8 @@ from __future__ import annotations
 __all__ = ["developer_prompt", "fixer_prompt"]
 
 
-def developer_prompt(spec: dict, vectors: list[tuple[str, str]], n: int = 3) -> str:
+def developer_prompt(spec: dict, vectors: list[tuple[str, str]], n: int = 3,
+                     types_header: str | None = None) -> str:
     """FR-4. `spec`: {name, signature, ret_type, notes, decompiled_c, types_header, assembly, callees}.
     `vectors`: (input_repr, expected_repr) from the trace bundle. Returns the prompt
     asking for N distinct candidates as a JSON array of sources."""

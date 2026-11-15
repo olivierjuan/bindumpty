@@ -64,6 +64,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--exclude", action="append", default=[],
                     help="regex: stop call-tree traversal at matching "
                          "symbols (e.g. --exclude 'mkl_.*' --exclude 'CPX.*')")
+    ap.add_argument("--types-dir", default=None,
+                    help="directory containing reconstructed type headers "
+                         "(D5.1 — passed as -I to harness/candidate compilation "
+                         "and injected into developer prompts)")
     ap.add_argument("--force-export", action="store_true",
                     help="re-run the export backend even if a cached graph exists")
     ap.add_argument("--cache-dir", default=None,
