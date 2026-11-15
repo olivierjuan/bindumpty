@@ -392,9 +392,18 @@ def main(argv: list[str] | None = None) -> int:
 
     live = console
     with session_scope(factory) as s:
+        types_header = None
+        if getattr(args, "types_dir", None):
+            import glob as _glob
+            chunks = []
+            for h in sorted(_glob.glob(os.path.join(args.types_dir, "*.h"))):
+                chunks.append(f"/* {os.path.basename(h)} */\n"
+                              + open(h).read())
+            types_header = "\n\n".join(chunks) or None
         rep = run_subtree(s, binary_sha256=sha, develop=develop,
                           max_iter=args.max_iter,
                           fuzz_budget_s=args.fuzz_budget,
+                          types_header=types_header,
                           log=lambda m: live.print(f"  [dim]{m}[/dim]"))
 
     # ---- verdict tree -------------------------------------------------------

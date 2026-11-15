@@ -60,11 +60,16 @@ class FuzzResult:
 
 
 def write_candidate(src: str) -> None:
-    """Persist the agent's source and rebuild the candidate .so."""
+    """Persist the agent's source and rebuild the candidate .so.
+    Compile failures raise with the compiler's stderr — a silent
+    CalledProcessError hides the actual clang error."""
     with open(CAND_SRC, "w") as f:
         f.write(src)
-    subprocess.run([os.path.join(ROOT, "horses", "src", "build_horse.sh")],
-                   check=True, capture_output=True)
+    r = subprocess.run([os.path.join(ROOT, "horses", "src", "build_horse.sh")],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        raise RuntimeError("candidate build failed:\n"
+                           + (r.stderr or r.stdout)[-1200:])
 
 
 def _parse(lines: list[str]) -> tuple[list, list]:

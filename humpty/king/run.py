@@ -86,6 +86,7 @@ def _fingerprinted(session: Session, sha: str) -> set[int]:
 def run_subtree(session: Session, *, binary_sha256: str, develop,
                 max_iter: int = 5, fuzz_budget_s: int = 15,
                 binary_path: str | None = None, cg_json_path: str | None = None,
+                types_header: str | None = None,
                 log=print) -> RunReport:
     """Reconstruct every function of the binary bottom-up.
 
@@ -141,7 +142,8 @@ def run_subtree(session: Session, *, binary_sha256: str, develop,
 
         r = run_leaf_loop(session, function_id=fid, develop=develop,
                           max_iter=max_iter, fuzz_budget_s=fuzz_budget_s,
-                          log=log, binary_path=binary_path)
+                          log=log, binary_path=binary_path,
+                          types_header=types_header)
         fn = session.get(Function, fid)
         v = FunctionVerdict(name=fn.name, state=fn.state,
                             confidence=fn.confidence,

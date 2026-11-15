@@ -158,13 +158,16 @@ def load_snapshot(path: str | Path) -> tuple[dict, dict]:
 
 def capture_snapshot(binary: str, function_name: str, function_offset: int,
                      runner_cmd: list[str], timeout_s: int = 600,
-                     max_pages: int = 32, out_dir: str | None = None) -> SnapshotCapture:
+                     max_pages: int = 32, out_dir: str | None = None,
+                     disable_aslr: bool = True) -> SnapshotCapture:
     """Run `runner_cmd` under Frida, snapshot `function_name` (at
     `function_offset` in its module) on entry+return during the run.
 
     `runner_cmd` is the argv that starts the real workload (e.g.
-    ['wine64', ...] or ['./lpex2', 'model.mps']) — the snapshot is only
-    meaningful when the function runs in an authentic solve.
+    ['./lpex2', 'model.mps']) — the snapshot is only meaningful when the
+    function runs in an authentic solve. disable_aslr uses frida's
+    spawn-time personality (NOT a setarch wrapper: frida does not
+    instrument exec chains, only the spawned image).
     """
     import frida
 
@@ -195,10 +198,12 @@ def capture_snapshot(binary: str, function_name: str, function_offset: int,
             else:
                 got["in_regs"] = payload.get("regs", {})
 
-    pid = None
     # spawn under frida so the hook is installed before any code runs
     argv = list(runner_cmd)
-    pid = frida.spawn(argv)
+    if disable_aslr:
+        pid = frida.spawn(argv, aslr="disable")
+    else:
+        pid = frida.spawn(argv)
     session = frida.attach(pid)
     script = session.create_script(js)
     script.on("message", on_message)

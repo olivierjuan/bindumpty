@@ -127,7 +127,8 @@ def _persist_counterexample(session: Session, fn: Function, ce,
 def run_leaf_loop(session: Session, *, function_id: int, develop,
                   max_iter: int = 5, fuzz_budget_s: int = 15,
                   log=print, harness_bin: str | None = None,
-                  binary_path: str | None = None) -> dict:
+                  binary_path: str | None = None,
+                  types_header: str | None = None) -> dict:
     """Drive one leaf function through the full CEGIS lifecycle.
 
     ``develop(spec, counterexample) -> source`` is the injected developer

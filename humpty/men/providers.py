@@ -162,7 +162,7 @@ def make_develop(spec: ProviderSpec, cache_dir: str | None = None,
         last: Exception | None = None
         for attempt in range(retries):
             try:
-                out = chat(spec, prompt)
+                out = _strip_fences(chat(spec, prompt))
                 cache.put(prompt, spec.model, spec.seed, out)
                 return out
             except Exception as e:  # noqa: BLE001 — retry per S4 pattern
@@ -172,3 +172,29 @@ def make_develop(spec: ProviderSpec, cache_dir: str | None = None,
                             f"after {retries} retries: {last}")
 
     return develop
+
+
+def _strip_fences(text: str) -> str:
+    """LLMs wrap code in markdown fences; a .c file containing them
+    fails to compile. Strip ```...``` (keeping the inner code) and any
+    leading prose before the first fence."""
+    import re as _re
+    m = _re.search(r"^\s*```[a-zA-Z0-9_+-]*\s*\n(.*?)\n?```\s*$", text, _re.S)
+    if m:
+        return m.group(1)
+    # prose + unclosed fence, or prose after the code: keep from the
+    # first line that looks like C (type/qualifier/start of decl)
+    if "```" in text:
+        text = text.replace("```c", "").replace("```", "")
+        lines = text.splitlines()
+        for i, l in enumerate(lines):
+            if _re.match(r"^\s*(#include|typedef|static|void|int|char|"
+                         r"unsigned|signed|long|short|float|double|"
+                         r"uint[0-9]+_t|int[0-9]+_t|size_t|extern|struct)",
+                         l):
+                return "\n".join(lines[i:])
+    # no closing fence (truncated reply): drop the opening fence line
+    lines = text.splitlines()
+    if lines and lines[0].lstrip().startswith("```"):
+        return "\n".join(lines[1:])
+    return text
