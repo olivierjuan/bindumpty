@@ -68,7 +68,13 @@ def _decompiled_for(session, fn, binary_path: str | None, log=print) -> str | No
         return None
     try:
         from humpty.ingest.decompile import ensure_decompiled
-        return ensure_decompiled(session, fn, binary_path, log=log)
+        code = ensure_decompiled(session, fn, binary_path, log=log)
+        if code:
+            # P2: the decompiler's prototype line normalizes into
+            # demangled_sig so harness_gen picks the right harness family
+            from humpty.ingest.prototypes import refresh_prototypes
+            refresh_prototypes(session, binary_path, log=log)
+        return code
     except Exception as e:  # noqa: BLE001 — decompilation must never kill a leaf
         log(f"  {fn.name}: on-demand decompilation unavailable: {e}")
         return None
@@ -138,9 +144,12 @@ def run_leaf_loop(session: Session, *, function_id: int, develop,
             session, fn=fn, develop=develop, harness_bin=harness_bin,
             max_iter=max_iter, fuzz_budget_s=fuzz_budget_s, log=log,
             binary_path=binary_path)
+    decompiled = _decompiled_for(session, fn, binary_path, log=log)
+    # P2: _decompiled_for may have refreshed demangled_sig from the
+    # decompiler's prototype line — read it after, not before
+    session.refresh(fn)
     spec = {"name": fn.name, "signature": fn.demangled_sig or fn.name,
-            "ret_type": "", "notes": "",
-            "decompiled_c": _decompiled_for(session, fn, binary_path, log=log)}
+            "ret_type": "", "notes": "", "decompiled_c": decompiled}
     divergences_seen = 0
     t0 = time.perf_counter()
 
@@ -245,9 +254,12 @@ def _run_with_generated_harness(session: Session, *, fn: Function, develop,
     from humpty.db.models import Candidate, Counterexample
     from humpty.domain.confidence import combined_confidence
 
+    decompiled = _decompiled_for(session, fn, binary_path, log=log)
+    # P2: _decompiled_for may have refreshed demangled_sig from the
+    # decompiler's prototype line — read it after, not before
+    session.refresh(fn)
     spec = {"name": fn.name, "signature": fn.demangled_sig or fn.name,
-            "ret_type": "", "notes": "",
-            "decompiled_c": _decompiled_for(session, fn, binary_path, log=log)}
+            "ret_type": "", "notes": "", "decompiled_c": decompiled}
     divergences_seen = 0
     t0 = time.perf_counter()
 
