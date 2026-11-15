@@ -403,6 +403,7 @@ def main(argv: list[str] | None = None) -> int:
         rep = run_subtree(s, binary_sha256=sha, develop=develop,
                           max_iter=args.max_iter,
                           fuzz_budget_s=args.fuzz_budget,
+                          binary_path=args.binary,
                           types_header=types_header,
                           log=lambda m: live.print(f"  [dim]{m}[/dim]"))
 

@@ -162,7 +162,7 @@ def make_develop(spec: ProviderSpec, cache_dir: str | None = None,
         last: Exception | None = None
         for attempt in range(retries):
             try:
-                out = _strip_fences(chat(spec, prompt))
+                out = _extract_c(chat(spec, prompt))
                 cache.put(prompt, spec.model, spec.seed, out)
                 return out
             except Exception as e:  # noqa: BLE001 — retry per S4 pattern
@@ -193,8 +193,30 @@ def _strip_fences(text: str) -> str:
                          r"uint[0-9]+_t|int[0-9]+_t|size_t|extern|struct)",
                          l):
                 return "\n".join(lines[i:])
-    # no closing fence (truncated reply): drop the opening fence line
-    lines = text.splitlines()
-    if lines and lines[0].lstrip().startswith("```"):
-        return "\n".join(lines[1:])
+    return text
+
+
+def _extract_c(text: str) -> str:
+    """Normalize a provider reply to compilable C.
+
+    Handles, in order: markdown fences, JSON envelopes
+    ({"candidates": ["void f() {...}", ...]} — the N-candidate reply
+    shape), and plain C passthrough. Without this, a JSON blob written
+    verbatim to horse_candidate.c fails with a baffling 'expected
+    identifier or (' at the brace.
+    """
+    text = _strip_fences(text)
+    s = text.strip()
+    if s.startswith("{") and s.endswith("}"):
+        import json as _json
+        try:
+            doc = _json.loads(s)
+        except _json.JSONDecodeError:
+            return text
+        for key in ("candidates", "code", "c", "source", "source_code"):
+            v = doc.get(key)
+            if isinstance(v, list) and v:
+                return _strip_fences(str(v[0]))
+            if isinstance(v, str) and v.strip():
+                return _strip_fences(v)
     return text

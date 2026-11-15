@@ -204,8 +204,15 @@ def _validate_parent(session: Session, *, binary: str, binary_sha256: str,
     if verified_candidate:
         cand_src = verified_candidate.source_code
     else:
+        from humpty.ingest.decompile import ensure_decompiled
+        decompiled = None
+        if binary_path:
+            try:
+                decompiled = ensure_decompiled(session, fn, binary_path, log=log)
+            except Exception:  # noqa: BLE001 — prompt degrades, loop continues
+                decompiled = None
         spec = {"name": fn.name, "signature": fn.demangled_sig or fn.name,
-                "ret_type": "", "notes": ""}
+                "ret_type": "", "notes": "", "decompiled_c": decompiled}
         cand_src = develop(spec, None)
     probe = os.path.join(td, "cand_alone.c")
     with open(probe, "w") as f:

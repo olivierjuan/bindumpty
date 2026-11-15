@@ -49,3 +49,16 @@ def test_void_and_variadic_arity():
     assert sig_param_count("void f(void)") == 0
     assert sig_param_count("int f(int a, char *b)") == 2
     assert sig_param_count("int f(...)") == 0
+
+
+def test_extract_c_from_json_envelope():
+    from humpty.men.providers import _extract_c
+    t = ('{"candidates": ["void f(void)\\n{\\n    return 0;\\n}", '
+         '"int g(void){return 1;}"]}')
+    assert _extract_c(t) == "void f(void)\n{\n    return 0;\n}"
+
+
+def test_extract_c_passthrough_and_fences():
+    from humpty.men.providers import _extract_c
+    assert _extract_c("int i(void) { return 3; }\n") == "int i(void) { return 3; }\n"
+    assert "return 2" in _extract_c("```c\nint h(void) { return 2; }\n```")
