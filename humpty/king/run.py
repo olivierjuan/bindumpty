@@ -140,6 +140,17 @@ def run_subtree(session: Session, *, binary_sha256: str, develop,
                 log(f"  {fn.name}: PARENT validation failed ({e}) — skipped")
                 continue
 
+        # Directive 2: automatic DynamoRIO pass before develop — edges
+        # + struct header for pointer-arg leaves (degrades silently when
+        # DR is absent)
+        if binary_path:
+            try:
+                from humpty.king.dr_seam import enrich_leaf
+                enrich_leaf(session, fn, binary=binary_path,
+                            binary_sha256=binary_sha256, log=log)
+            except Exception as e:  # noqa: BLE001 — seam must never block
+                log(f"  {fn.name}: DR seam skipped ({e})")
+
         r = run_leaf_loop(session, function_id=fid, develop=develop,
                           max_iter=max_iter, fuzz_budget_s=fuzz_budget_s,
                           log=log, binary_path=binary_path,
