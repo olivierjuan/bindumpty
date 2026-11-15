@@ -61,15 +61,32 @@ def decompile_on_demand(binary: str, function_name: str | None = None,
     return json.loads(Path(out).read_text())
 
 
+def _file_cache(binary: str, function_name: str):
+    """Persistent decompile cache: run DBs are throwaway
+    (/tmp/bindumpty-run-*/run.db), so decompiled bodies are also cached
+    on disk keyed by (binary sha, function name). The first run pays
+    the 10-min Ghidra import; every later run is a file read."""
+    from humpty.ingest import binary_sha256
+    sha = binary_sha256(binary)
+    d = os.path.expanduser(f"~/.cache/bindumpty/decompiled/{sha[:16]}")
+    os.makedirs(d, exist_ok=True)
+    return os.path.join(d, f"{function_name}.c")
+
+
 def ensure_decompiled(session, fn, binary: str, log=print) -> str | None:
     """Return fn.decompiled_code, decompiling + persisting on first need.
 
-    P1 helper: called when a function transitions to `ready`. The session
-    is committed by the caller's transaction (the caller owns the unit of
-    work).
+    Lookup order: session row → file cache → Ghidra on demand. P1
+    helper; the caller's transaction owns the commit.
     """
     if fn.decompiled_code:
         return fn.decompiled_code
+    cache = _file_cache(binary, fn.name)
+    if os.path.exists(cache):
+        code = open(cache).read()
+        fn.decompiled_code = code
+        log(f"  {fn.name}: decompiled_code from file cache ({len(code)} bytes)")
+        return code
     try:
         doc = decompile_on_demand(binary, fn.name)
     except (RuntimeError, json.JSONDecodeError) as e:
@@ -80,5 +97,7 @@ def ensure_decompiled(session, fn, binary: str, log=print) -> str | None:
         log(f"  {fn.name}: decompiler returned no code")
         return None
     fn.decompiled_code = code
+    with open(cache, "w") as f:
+        f.write(code)
     log(f"  {fn.name}: decompiled on demand ({len(code)} bytes, persisted)")
     return code
