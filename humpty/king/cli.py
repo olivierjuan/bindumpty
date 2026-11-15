@@ -303,8 +303,11 @@ def main(argv: list[str] | None = None) -> int:
                 # done, startup drops from ~11 min to ~3 s).
                 from humpty.ingest import binary_sha256 as _sha
                 bin_sha = _sha(args.binary)
+                # Ghidra 12.2 rejects project paths whose elements start
+                # with '.', so the persistent store cannot live under
+                # ~/.cache — use ~/bindumpty-ghidra/<sha16> instead.
                 cache_root = os.path.expanduser(
-                    f"~/.cache/bindumpty/ghidra/{bin_sha[:16]}")
+                    f"~/bindumpty-ghidra/{bin_sha[:16]}")
                 os.makedirs(cache_root, exist_ok=True)
                 proj_name = "main"
                 already_imported = os.path.isdir(
@@ -317,6 +320,11 @@ def main(argv: list[str] | None = None) -> int:
                               cache_root, proj_name]
                 if not already_imported:
                     cmd_prefix += ["-import", args.binary, "-overwrite"]
+                else:
+                    # Reopening an existing project: attach to the imported
+                    # program (named after the binary file) or currentProgram
+                    # is null and every script NPEs.
+                    cmd_prefix += ["-process", Path(args.binary).name]
                 # D1.3: subtree-scoped export — pass root symbol + depth
                 # as script args [2] and [3]
                 script_args = [cg_path]

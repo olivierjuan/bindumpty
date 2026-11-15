@@ -89,9 +89,12 @@ public class ExportCallGraph extends GhidraScript {
         // Verdict feeds the pipeline adapter (humpty/analyze/detect_lang.py).
         String srcLang = detectSourceLang();
         // Also emit the standalone verdict JSON when an output path is given
-        // (second script arg), so the two-tier detector can cross-check.
-        String langOutPath = sargs.length >= 2 ? sargs[1] : null;
-        if (langOutPath != null) {
+        // (second script arg in the exporters convention), so the two-tier
+        // detector can cross-check. langOutPath is declared in the arg
+        // parsing block above.
+        // Only the exporters' 2-arg convention passes a lang path; in the
+        // CLI's 3-arg convention arg[1] is the root symbol — never a path.
+        if (langOutPath != null && sargs.length == 2) {
             try (FileWriter lw = new FileWriter(langOutPath)) {
                 lw.write(langVerdictJson);
             }
