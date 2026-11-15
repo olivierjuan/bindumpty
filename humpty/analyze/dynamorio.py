@@ -82,6 +82,7 @@ class DrResult:
 def dr_record(binary: str, target_offset: int, argv: list[str],
               out_dir: str | Path | None = None,
               record_structs: bool = True, record_vtables: bool = True,
+              target_size: int | None = None,
               timeout_s: float = 1800.0) -> DrResult:
     """Record the target under DynamoRIO.
 
@@ -116,6 +117,8 @@ def dr_record(binary: str, target_offset: int, argv: list[str],
                f"--record_vtables=0",
                f"--out_dir={out_dir}",
                "--", binary, *argv]
+        if target_size:
+            cmd.insert(-len(argv) - 1, f"--target_size={target_size}")
         r1 = subprocess.run(cmd, capture_output=True, text=True,
                             timeout=timeout_s)
         exit_code = r1.returncode

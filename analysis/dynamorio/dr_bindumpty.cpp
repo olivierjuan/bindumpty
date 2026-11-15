@@ -45,6 +45,7 @@ namespace {
 
 struct Options {
     uintptr_t target_offset = 0;
+    uintptr_t target_size = 0;     /* function extent; 0 = 256 B fallback */
     bool record_structs = false;
     bool record_vtables = false;
     std::string out_dir = "/tmp/bindumpty_dr";
@@ -324,6 +325,13 @@ void target_on_enter(void *wrapcxt, void **user_data) {
             continue;
         pt->reads[p] =
             std::vector<unsigned char>(page, page + sizeof(page));
+        /* §4.2 alternative (user directive): pointer-like arguments ARE
+         * the object bases — register each so [base+offset] derefs
+         * profile the input struct's fields without touching malloc
+         * (no recursion, no deadlock). Args below 0x10000 are flags/
+         * counts, not pointers. */
+        if (p >= 0x10000)
+            record_field(p, p, 8, false, true, false);
     }
     dr_fprintf(STDERR, "[dr] enter\n");
 }
@@ -396,7 +404,9 @@ void on_module_load(void *drcontext, const module_data_t *data, bool loaded) {
          * after the target in this module — so mem instrumentation
          * stays inside the function */
         g_fn_start = target;
-        g_fn_end = target + 0x100;   /* v0: fixed 256-byte extent */
+        g_fn_end = g_opts.target_size > 0
+                       ? target + g_opts.target_size
+                       : target + 0x100;   /* fallback when size unknown */
         dr_fprintf(STDERR, "[dr_bindumpty] fn extent %p..%p\n",
                    (void *)g_fn_start, (void *)g_fn_end);
     }
@@ -493,6 +503,8 @@ DR_EXPORT void dr_init(client_id_t id) {
         };
         if (a.rfind("--target_offset=", 0) == 0 && val())
             g_opts.target_offset = strtoull(val(), nullptr, 0);
+        else if (a.rfind("--target_size=", 0) == 0 && val())
+            g_opts.target_size = strtoull(val(), nullptr, 0);
         else if (a.rfind("--record_structs=", 0) == 0 && val())
             g_opts.record_structs = atoi(val()) != 0;
         else if (a.rfind("--record_vtables=", 0) == 0 && val())
