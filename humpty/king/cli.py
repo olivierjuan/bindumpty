@@ -339,12 +339,16 @@ def main(argv: list[str] | None = None) -> int:
                        "-postScript", "ExportCallGraph.java"] + script_args,
                     stdout=_sp.PIPE, stderr=_sp.STDOUT, text=True,
                     env=env, cwd=ROOT)
+                out_lines: list[str] = []
                 for line in proc.stdout:
+                    out_lines.append(line)
                     tt.feed_ghidra(line)
                 proc.wait()
                 if proc.returncode != 0:
                     raise RuntimeError(
-                        f"ghidra export failed rc={proc.returncode}")
+                        "ghidra export failed rc="
+                        f"{proc.returncode}:\n"
+                        + "".join(out_lines[-15:]))
             tt.finish_phase("I", "backend run")
             if export_ticks:
                 tt.message(f"backend progress: {export_ticks[-1][0]}/"

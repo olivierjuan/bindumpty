@@ -69,31 +69,48 @@ def objdump_call_graph(binary: str | Path,
                 parts = line.split()
                 paddr, psize = int(parts[4], 16), int(parts[5], 16)
                 plt_addrs |= set(range(paddr, paddr + psize))
-        for idx, (name, start) in enumerate(syms):
-            end = syms[idx + 1][1] if idx + 1 < len(syms) else start + 4096
+        BATCH = 512
+        for batch_start in range(0, len(syms), BATCH):
+            chunk = syms[batch_start:batch_start + BATCH]
+            lo = chunk[0][1]
+            hi = (chunk[-1][1] + 4096) if batch_start + BATCH >= len(syms) \
+                else syms[batch_start + BATCH][1]
             dis = subprocess.run(
-                ["objdump", "-d", f"--start-address=0x{start:x}",
-                 f"--stop-address=0x{end:x}", str(binary)],
-                capture_output=True, text=True, timeout=60).stdout
+                ["objdump", "-d", f"--start-address=0x{lo:x}",
+                 f"--stop-address=0x{hi:x}", str(binary)],
+                capture_output=True, text=True, timeout=300).stdout
+            # split the batch dump back into per-symbol ranges in-process:
+            # a call belongs to the symbol whose [start, next_start) range
+            # contains its site address
+            bounds = [(n, a, (chunk[i + 1][1] if i + 1 < len(chunk)
+                              else hi)) for i, (n, a) in enumerate(chunk)]
+            import bisect
+            starts = [a for _, a, _ in bounds]
             for line in dis.splitlines():
                 if "\tcall" not in line:
                     continue
-                m = re.search(r"\bcall\s+([0-9a-f]+)\b", line)
-                if not m:
+                ms = re.match(r"^\s*([0-9a-f]+):.*\bcall\s+([0-9a-f]+)\b", line)
+                if not ms:
                     continue
-                tgt = int(m.group(1), 16)
+                site = int(ms.group(1), 16)
+                tgt = int(ms.group(2), 16)
                 if tgt in plt_addrs:
                     continue
+                i = bisect.bisect_right(starts, site) - 1
+                if i < 0:
+                    continue
+                name = bounds[i][0]
                 tgt_name = (name_map or {}).get(tgt, f"fn_{tgt:x}")
                 edge = {"caller": name, "callee": tgt_name, "kind": "direct"}
                 if edge["caller"] != edge["callee"] and edge not in edges:
                     edges.append(edge)
-            progress(idx + 1, total)
+            done = min(batch_start + BATCH, len(syms))
+            progress(done, total)
         functions = [{"name": n, "address": f"0x{a:x}", "size": 0}
                      for n, a in syms]
         return ExportResult(backend="objdump", source_lang="unknown",
                             functions=functions, edges=edges,
-                            notes=["chunked per-symbol export (progress mode)"])
+                            notes=["chunked batched export (512/batch)"])
     dis = subprocess.run(["objdump", "-d", str(binary)],
                          capture_output=True, text=True, timeout=120).stdout
 
