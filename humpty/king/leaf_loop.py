@@ -102,6 +102,37 @@ def _indirect_callees(session, fn, log=print) -> list[str]:
     return out
 
 
+def _try_z3_proof(session, fn, candidate, binary_path, log=print) -> bool:
+    """FR-11 generalized proof upgrade: when the fuzzing loop marks a
+    candidate trusted, attempt a Z3 QF_BV equivalence proof between the
+    original decompiled C and the candidate source. UNSAT upgrades the
+    row to State.PROVEN (genuine equivalence, not sampled equivalence).
+    Any unsupported construct (loops, pointers beyond the symbolic-memory
+    v0, calls) leaves the row trusted. Returns True on upgrade."""
+    if binary_path is None:
+        return False
+    try:
+        from humpty.analyze.smt_prove import prove_equivalence
+        from humpty.domain import State as _S
+        orig_src = fn.decompiled_code
+        if not orig_src:
+            return False
+        proof = prove_equivalence(orig_src, candidate.source_code,
+                                  fn.name)
+        if proof.status == "proven":
+            _move(session, fn, _S.PROVEN)
+            candidate.status = "proven"
+            fn.confidence = 1.0
+            log(f"  {fn.name}: PROVEN via Z3 QF_BV equivalence "
+                f"({proof.details})")
+            return True
+        log(f"  {fn.name}: Z3 proof {proof.status} — stays trusted "
+            f"({proof.details[:80]})")
+    except Exception as e:  # noqa: BLE001 — proof is best-effort
+        log(f"  {fn.name}: Z3 proof error: {e}")
+    return False
+
+
 class LeafLoopError(RuntimeError):
     """An illegal lifecycle transition was attempted (states.py is law)."""
 
@@ -236,6 +267,11 @@ def run_leaf_loop(session: Session, *, function_id: int, develop,
         if not result.divergent:
             candidate.status = "trusted"
             _move(session, fn, State.TRUSTED)
+            if _try_z3_proof(session, fn, candidate, binary_path, log=log):
+                return {"verified": True, "iterations": iteration,
+                        "state": fn.state, "confidence": fn.confidence,
+                        "counterexamples": divergences_seen,
+                        "wall_s": time.perf_counter() - t0}
             fn.confidence = combined_confidence(
                 exec_count=result.execs, divergences=0,
                 budget=fuzz_budget_s).value()
@@ -350,6 +386,11 @@ def _run_with_generated_harness(session: Session, *, fn: Function, develop,
 
         candidate.status = "trusted"
         _move(session, fn, State.TRUSTED)
+        if _try_z3_proof(session, fn, candidate, binary_path, log=log):
+            return {"verified": True, "iterations": iteration,
+                    "state": fn.state, "confidence": fn.confidence,
+                    "counterexamples": divergences_seen,
+                    "wall_s": time.perf_counter() - t0}
         fn.confidence = combined_confidence(
             exec_count=1000000, divergences=0,
             budget=fuzz_budget_s).value()
