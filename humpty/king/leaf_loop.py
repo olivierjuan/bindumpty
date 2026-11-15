@@ -144,13 +144,14 @@ def run_leaf_loop(session: Session, *, function_id: int, develop,
         return _run_with_generated_harness(
             session, fn=fn, develop=develop, harness_bin=harness_bin,
             max_iter=max_iter, fuzz_budget_s=fuzz_budget_s, log=log,
-            binary_path=binary_path)
+            binary_path=binary_path, types_header=types_header)
     decompiled = _decompiled_for(session, fn, binary_path, log=log)
     # P2: _decompiled_for may have refreshed demangled_sig from the
     # decompiler's prototype line — read it after, not before
     session.refresh(fn)
     spec = {"name": fn.name, "signature": fn.demangled_sig or fn.name,
-            "ret_type": "", "notes": "", "decompiled_c": decompiled}
+            "ret_type": "", "notes": "", "decompiled_c": decompiled,
+            "types_header": types_header}
     divergences_seen = 0
     t0 = time.perf_counter()
 
@@ -246,7 +247,8 @@ def run_leaf_loop(session: Session, *, function_id: int, develop,
 def _run_with_generated_harness(session: Session, *, fn: Function, develop,
                                 harness_bin: str, max_iter: int,
                                 fuzz_budget_s: int, log=print,
-                                binary_path: str | None = None) -> dict:
+                                binary_path: str | None = None,
+                                types_header: str | None = None) -> dict:
     """CEGIS loop for a function with a generated (harness_gen) harness.
     Compiles the candidate into the generated harness and fuzzes it."""
     import tempfile
@@ -260,7 +262,8 @@ def _run_with_generated_harness(session: Session, *, fn: Function, develop,
     # decompiler's prototype line — read it after, not before
     session.refresh(fn)
     spec = {"name": fn.name, "signature": fn.demangled_sig or fn.name,
-            "ret_type": "", "notes": "", "decompiled_c": decompiled}
+            "ret_type": "", "notes": "", "decompiled_c": decompiled,
+            "types_header": types_header}
     divergences_seen = 0
     t0 = time.perf_counter()
 
