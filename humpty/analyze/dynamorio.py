@@ -34,11 +34,16 @@ __all__ = ["DrResult", "dr_home", "client_path", "dr_record",
 SNAP_MAGIC = b"DRSNAP02"
 
 
-def dr_home() -> Path:
-    """DynamoRIO installation root ($DYNAMORIO_HOME or the /tmp layout).
+_PERSISTENT_ROOT = Path.home() / "dynamorio"
 
-    Handles both layouts: a source build (build/bin64/drrun) and the
-    release tarball (bin64/drrun)."""
+
+def dr_home() -> Path:
+    """DynamoRIO installation root.
+
+    Resolution order: $DYNAMORIO_HOME, then the persistent install at
+    ~/dynamorio. /tmp is deliberately NOT a fallback — it is wiped
+    between sessions (a DR tree installed there disappeared once
+    already)."""
     def has_drrun(root: Path) -> bool:
         return ((root / "build" / "bin64" / "drrun").exists()
                 or (root / "bin64" / "drrun").exists())
@@ -46,12 +51,16 @@ def dr_home() -> Path:
     env = os.environ.get("DYNAMORIO_HOME")
     if env and has_drrun(Path(env).expanduser()):
         return Path(env).expanduser()
+    if has_drrun(_PERSISTENT_ROOT):
+        return _PERSISTENT_ROOT
     for cand in sorted(Path("/tmp").glob("DynamoRIO-Linux-*")):
         if has_drrun(cand):
             return cand
     raise RuntimeError(
-        "DynamoRIO not found: set DYNAMORIO_HOME or extract the release "
-        "tarball to /tmp/DynamoRIO-Linux-*")
+        "DynamoRIO not found: set DYNAMORIO_HOME, or install it "
+        f"persistently at {_PERSISTENT_ROOT} "
+        "(curl -L <release-url> | tar xz -C "
+        f"{_PERSISTENT_ROOT.parent} --strip-components=1)")
 
 
 def client_path(edges: bool = False) -> Path:

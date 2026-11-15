@@ -105,7 +105,9 @@ def _chat_litellm(spec: ProviderSpec, prompt: str) -> str:
     base = spec.api_base or os.environ.get("LITELLM_BASE_URL")
     if "/" not in model.split("-", 1)[0] and base:
         model = f"openai/{model}"
-    key = os.environ.get(spec.api_key_env or "LITELLM_KEY", "")
+    key = (os.environ.get(spec.api_key_env or "LITELLM_KEY", "") or
+           os.environ.get("OPENAI_API_KEY", "") or
+           os.environ.get("ANTHROPIC_AUTH_TOKEN", ""))
     kwargs: dict = {"model": model, "max_tokens": spec.max_tokens,
                     "temperature": spec.temperature}
     if base:
