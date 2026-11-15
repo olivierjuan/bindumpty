@@ -58,6 +58,8 @@ def objdump_call_graph(binary: str | Path,
         edges: list[dict] = []
         seen: set[tuple[str, str]] = set()
         total = max(len(syms), 1)
+        # locally defined symbols (T/t) — used for PLT-through resolution
+        defined_names = {n: a for n, a in syms}
         # PLT trampolines: readelf section headers give .plt's range; targets
         # inside it are resolved by FR-2 fingerprinting, not walked
         import subprocess as _sp2
@@ -86,23 +88,37 @@ def objdump_call_graph(binary: str | Path,
                               else hi)) for i, (n, a) in enumerate(chunk)]
             import bisect
             starts = [a for _, a, _ in bounds]
+            seen_edges = seen  # shared set from the enclosing scope
             for line in dis.splitlines():
                 if "\tcall" not in line:
                     continue
-                ms = re.match(r"^\s*([0-9a-f]+):.*\bcall\s+([0-9a-f]+)\b", line)
+                ms = re.match(
+                    r"^\s*([0-9a-f]+):.*\bcall\s+([0-9a-f]+)\b"
+                    r"(?:\s+<([^>]+)>)?", line)
                 if not ms:
                     continue
                 site = int(ms.group(1), 16)
                 tgt = int(ms.group(2), 16)
+                label = ms.group(3) or ""
+                # PLT-through resolution: '<local_fn>@plt' targets resolve
+                # to the locally defined symbol (PIE .so internal calls are
+                # PLT-trampolined). External PLT stubs (@plt, not defined
+                # here) are dropped — FR-2 fingerprinting owns them.
                 if tgt in plt_addrs:
-                    continue
+                    mloc = re.match(r"(.+)@plt$", label)
+                    if mloc and mloc.group(1) in defined_names:
+                        tgt = defined_names[mloc.group(1)]
+                    else:
+                        continue
                 i = bisect.bisect_right(starts, site) - 1
                 if i < 0:
                     continue
                 name = bounds[i][0]
                 tgt_name = (name_map or {}).get(tgt, f"fn_{tgt:x}")
                 edge = {"caller": name, "callee": tgt_name, "kind": "direct"}
-                if edge["caller"] != edge["callee"] and edge not in edges:
+                key = (edge["caller"], edge["callee"])
+                if key not in seen_edges and edge["caller"] != edge["callee"]:
+                    seen_edges.add(key)
                     edges.append(edge)
             done = min(batch_start + BATCH, len(syms))
             progress(done, total)
