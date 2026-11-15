@@ -1,0 +1,13 @@
+{
+  "format": "fuz.call-graph/1",
+  "binary": {"sha256": "bda1f433d02eefd100a0a4bdc07574cb6b07575ac655d6825f85f8be5cc291fc","arch": "x86:LE:64:default","kind": "elf","is_pie": false,"is_stripped": false,"source_lang": "lean_cpp"},
+  "functions": [
+    {"name": "CPXbaropt","address": "0x37ee80","size": 57,"demangled_sig": "undefined CPXbaropt()","has_rtti": false,"scc_id": null,"is_library": true},
+    {"name": "_1f1782bc1340dc3df7b07ab3ddc6d05c","address": "0x4785e0","size": 163,"demangled_sig": "undefined _1f1782bc1340dc3df7b07ab3ddc6d05c()","has_rtti": false,"scc_id": null,"is_library": true}
+  ],
+  "edges": [
+    {"caller": "CPXbaropt","callee": "_1f1782bc1340dc3df7b07ab3ddc6d05c","kind": "direct"}
+  ],
+  "sccs": [["_1f1782bc1340dc3df7b07ab3ddc6d05c"],["CPXbaropt"]],
+  "topological_order": ["CPXbaropt","_1f1782bc1340dc3df7b07ab3ddc6d05c"]
+}

@@ -141,7 +141,7 @@ def run_subtree(session: Session, *, binary_sha256: str, develop,
 
         r = run_leaf_loop(session, function_id=fid, develop=develop,
                           max_iter=max_iter, fuzz_budget_s=fuzz_budget_s,
-                          log=log)
+                          log=log, binary_path=binary_path)
         fn = session.get(Function, fid)
         v = FunctionVerdict(name=fn.name, state=fn.state,
                             confidence=fn.confidence,

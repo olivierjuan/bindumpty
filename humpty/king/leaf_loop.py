@@ -54,6 +54,26 @@ import cegis  # noqa: E402
 __all__ = ["LeafLoopError", "run_leaf_loop"]
 
 
+def _decompiled_for(session, fn, binary_path: str | None, log=print) -> str | None:
+    """P1: decompiled C for the developer prompt, decompiling on demand.
+
+    Returns the persisted functions.decompiled_code; when NULL and the
+    binary path is known, runs DecompileFunction.java once and persists
+    the result. Any failure degrades to None (the prompt simply omits
+    the decompilation section — never blocks the loop).
+    """
+    if fn.decompiled_code:
+        return fn.decompiled_code
+    if not binary_path:
+        return None
+    try:
+        from humpty.ingest.decompile import ensure_decompiled
+        return ensure_decompiled(session, fn, binary_path, log=log)
+    except Exception as e:  # noqa: BLE001 — decompilation must never kill a leaf
+        log(f"  {fn.name}: on-demand decompilation unavailable: {e}")
+        return None
+
+
 class LeafLoopError(RuntimeError):
     """An illegal lifecycle transition was attempted (states.py is law)."""
 
@@ -100,7 +120,8 @@ def _persist_counterexample(session: Session, fn: Function, ce,
 
 def run_leaf_loop(session: Session, *, function_id: int, develop,
                   max_iter: int = 5, fuzz_budget_s: int = 15,
-                  log=print, harness_bin: str | None = None) -> dict:
+                  log=print, harness_bin: str | None = None,
+                  binary_path: str | None = None) -> dict:
     """Drive one leaf function through the full CEGIS lifecycle.
 
     ``develop(spec, counterexample) -> source`` is the injected developer
@@ -115,9 +136,11 @@ def run_leaf_loop(session: Session, *, function_id: int, develop,
         # generated per-binary harness (harness_gen): use a direct fuzz loop
         return _run_with_generated_harness(
             session, fn=fn, develop=develop, harness_bin=harness_bin,
-            max_iter=max_iter, fuzz_budget_s=fuzz_budget_s, log=log)
+            max_iter=max_iter, fuzz_budget_s=fuzz_budget_s, log=log,
+            binary_path=binary_path)
     spec = {"name": fn.name, "signature": fn.demangled_sig or fn.name,
-            "ret_type": "", "notes": ""}
+            "ret_type": "", "notes": "",
+            "decompiled_c": _decompiled_for(session, fn, binary_path, log=log)}
     divergences_seen = 0
     t0 = time.perf_counter()
 
@@ -212,7 +235,8 @@ def run_leaf_loop(session: Session, *, function_id: int, develop,
 
 def _run_with_generated_harness(session: Session, *, fn: Function, develop,
                                 harness_bin: str, max_iter: int,
-                                fuzz_budget_s: int, log=print) -> dict:
+                                fuzz_budget_s: int, log=print,
+                                binary_path: str | None = None) -> dict:
     """CEGIS loop for a function with a generated (harness_gen) harness.
     Compiles the candidate into the generated harness and fuzzes it."""
     import tempfile
@@ -222,7 +246,8 @@ def _run_with_generated_harness(session: Session, *, fn: Function, develop,
     from humpty.domain.confidence import combined_confidence
 
     spec = {"name": fn.name, "signature": fn.demangled_sig or fn.name,
-            "ret_type": "", "notes": ""}
+            "ret_type": "", "notes": "",
+            "decompiled_c": _decompiled_for(session, fn, binary_path, log=log)}
     divergences_seen = 0
     t0 = time.perf_counter()
 
