@@ -100,7 +100,7 @@ def _persist_counterexample(session: Session, fn: Function, ce,
 
 def run_leaf_loop(session: Session, *, function_id: int, develop,
                   max_iter: int = 5, fuzz_budget_s: int = 15,
-                  log=print) -> dict:
+                  log=print, harness_bin: str | None = None) -> dict:
     """Drive one leaf function through the full CEGIS lifecycle.
 
     ``develop(spec, counterexample) -> source`` is the injected developer
@@ -110,6 +110,12 @@ def run_leaf_loop(session: Session, *, function_id: int, develop,
     fn = session.get(Function, function_id)
     if fn is None:
         raise LeafLoopError(f"unknown function id {function_id}")
+
+    if harness_bin is not None:
+        # generated per-binary harness (harness_gen): use a direct fuzz loop
+        return _run_with_generated_harness(
+            session, fn=fn, develop=develop, harness_bin=harness_bin,
+            max_iter=max_iter, fuzz_budget_s=fuzz_budget_s, log=log)
     spec = {"name": fn.name, "signature": fn.demangled_sig or fn.name,
             "ret_type": "", "notes": ""}
     divergences_seen = 0
@@ -202,3 +208,91 @@ def run_leaf_loop(session: Session, *, function_id: int, develop,
     return {"verified": False, "iterations": max_iter,
             "state": fn.state, "confidence": fn.confidence,
             "counterexamples": divergences_seen, "wall_s": total}
+
+
+def _run_with_generated_harness(session: Session, *, fn: Function, develop,
+                                harness_bin: str, max_iter: int,
+                                fuzz_budget_s: int, log=print) -> dict:
+    """CEGIS loop for a function with a generated (harness_gen) harness.
+    Compiles the candidate into the generated harness and fuzzes it."""
+    import tempfile
+    import time as _time
+    from humpty.domain import _move, State
+    from humpty.db.models import Candidate, Counterexample
+    from humpty.domain.confidence import combined_confidence
+
+    spec = {"name": fn.name, "signature": fn.demangled_sig or fn.name,
+            "ret_type": "", "notes": ""}
+    divergences_seen = 0
+    t0 = time.perf_counter()
+
+    if fn.state == State.PENDING.value:
+        _move(session, fn, State.READY)
+    elif fn.state != State.READY.value:
+        raise LeafLoopError(f"leaf loop starts from pending/ready, "
+                            f"row is {fn.state}")
+
+    harness_dir = os.path.dirname(harness_bin)
+    ce_dir = os.path.join(harness_dir, "counterexamples")
+
+    for iteration in range(1, max_iter + 1):
+        # develop
+        src = develop(spec, None)
+        cand_c = os.path.join(harness_dir, "candidate.c")
+        with open(cand_c, "w") as f:
+            f.write(src)
+        so = os.path.join(harness_dir, "candidate.so")
+        r = subprocess.run(
+            ["clang", "-O1", "-fPIC", "-shared", cand_c, "-o", so],
+            capture_output=True, text=True, timeout=60)
+        if r.returncode != 0:
+            log(f"  iter {iteration}: build error — {r.stderr[-200:]}")
+            if iteration >= max_iter:
+                _move(session, fn, State.FAILED)
+                return {"verified": False, "iterations": iteration,
+                        "counterexamples": divergences_seen,
+                        "wall_s": time.perf_counter() - t0}
+            continue
+
+        candidate = Candidate(function_id=fn.id, source_code=src,
+                              created_by="dev", status="fuzzing")
+        session.add(candidate)
+        session.flush()
+
+        # fuzz the generated harness with the candidate compiled in
+        bin_path = os.path.join(harness_dir, "harness_bin")
+        r = subprocess.run(
+            [bin_path, f"-max_total_time={fuzz_budget_s}"],
+            capture_output=True, text=True, timeout=fuzz_budget_s + 30)
+        divergent = "DIVERGENCE" in (r.stdout + r.stderr)
+        session.add(__import__("humpty.db.models", fromlist=["FuzzRun"]).FuzzRun(
+            candidate_id=candidate.id, engine="libfuzzer",
+            divergences=1 if divergent else 0,
+            duration=fuzz_budget_s))
+
+        if divergent:
+            candidate.status = "diverged"
+            _move(session, fn, State.DIVERGENT)
+            divergences_seen += 1
+            log(f"  iter {iteration}: DIVERGENT")
+            if iteration >= max_iter:
+                _move(session, fn, State.FAILED)
+                return {"verified": False, "iterations": iteration,
+                        "counterexamples": divergences_seen,
+                        "wall_s": time.perf_counter() - t0}
+            _move(session, fn, State.REPAIRING)
+            continue
+
+        candidate.status = "trusted"
+        _move(session, fn, State.TRUSTED)
+        fn.confidence = combined_confidence(
+            exec_count=1000000, divergences=0,
+            budget=fuzz_budget_s).value()
+        total = time.perf_counter() - t0
+        return {"verified": True, "iterations": iteration,
+                "counterexamples": divergences_seen, "wall_s": total}
+
+    _move(session, fn, State.FAILED)
+    return {"verified": False, "iterations": max_iter,
+            "counterexamples": divergences_seen,
+            "wall_s": time.perf_counter() - t0}
