@@ -54,6 +54,11 @@ public class ExportCallGraph extends GhidraScript {
         // output path is the (single) script arg
         String[] sargs = getScriptArgs();
         String outPath = sargs.length >= 1 ? sargs[0] : "call_graph.json";
+        // D1.3: subtree-scoped export — rootSymbol restricts the graph to
+        // the transitive callee tree from that function; maxDepth bounds it
+        String rootSymbol = sargs.length >= 3 ? sargs[2] : null;
+        int maxDepth = sargs.length >= 4 ? Integer.parseInt(sargs[3])
+                                         : Integer.MAX_VALUE;
 
         // --- binary metadata ---------------------------------------------
         // 12.2 API: getExecutablePath/getExecutableSHA256 on Program.
@@ -79,10 +84,61 @@ public class ExportCallGraph extends GhidraScript {
         }
 
         // --- collect functions -------------------------------------------
+        // D1.3: subtree-scoped export — if rootSymbol is set, BFS the call
+        // tree from that function up to maxDepth and collect only reachable
+        // functions (instead of serializing all 17k+ binary symbols).
         List<Function> fns = new ArrayList<>();
-        for (FunctionIterator it = currentProgram.getFunctionManager().getFunctions(true);
-             it.hasNext(); ) {
-            fns.add(it.next());
+        if (rootSymbol != null) {
+            // BFS from root through direct call targets
+            java.util.Map<String, List<Address>> callTargets = new HashMap<>();
+            Function rootFn = null;
+            for (FunctionIterator it = currentProgram.getFunctionManager().getFunctions(true);
+                 it.hasNext(); ) {
+                Function f = it.next();
+                if (f.getName().equals(rootSymbol)) {
+                    rootFn = f;
+                    break;
+                }
+            }
+            if (rootFn == null) {
+                println("ExportCallGraph: root symbol '" + rootSymbol + "' not found, exporting all");
+            } else {
+                // BFS: start with root, follow direct call targets
+                java.util.Set<String> visited = new java.util.HashSet<>();
+                java.util.List<Function> frontier = new ArrayList<>();
+                frontier.add(rootFn);
+                visited.add(rootFn.getName());
+                fns.add(rootFn);
+                int depth = 0;
+                while (!frontier.isEmpty() && depth < maxDepth) {
+                    java.util.List<Function> next = new ArrayList<>();
+                    for (Function caller : frontier) {
+                        // find callees via references from the caller's body
+                        for (Instruction ins : currentProgram.getListing().getInstructions(caller.getBody(), true)) {
+                            for (Reference ref : ins.getReferencesFrom()) {
+                                if (!ref.getReferenceType().isCall()) continue;
+                                Address tgt = ref.getToAddress();
+                                Function callee = currentProgram.getFunctionManager().getFunctionContaining(tgt);
+                                if (callee == null) continue;
+                                if (visited.contains(callee.getName())) continue;
+                                visited.add(callee.getName());
+                                fns.add(callee);
+                                next.add(callee);
+                            }
+                        }
+                    }
+                    frontier = next;
+                    depth++;
+                }
+                mon.setMessage("subtree from " + rootSymbol + ": " + fns.size() + " fns, depth " + depth);
+            }
+        }
+        if (fns.isEmpty()) {
+            // full export (no root symbol or root not found)
+            for (FunctionIterator it = currentProgram.getFunctionManager().getFunctions(true);
+                 it.hasNext(); ) {
+                fns.add(it.next());
+            }
         }
         mon.setMessage("functions: " + fns.size());
 
