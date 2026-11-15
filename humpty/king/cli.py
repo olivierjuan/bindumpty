@@ -310,8 +310,15 @@ def main(argv: list[str] | None = None) -> int:
                     f"~/bindumpty-ghidra/{bin_sha[:16]}")
                 os.makedirs(cache_root, exist_ok=True)
                 proj_name = "main"
-                already_imported = os.path.isdir(
-                    os.path.join(cache_root, f"{proj_name}.rep"))
+                # 'Already imported' = a program actually exists in the
+                # repo (idata/<xx>/<nnnn>.db); a project skeleton alone
+                # (index files only, e.g. after an aborted first import)
+                # still requires -import.
+                idata = os.path.join(cache_root, f"{proj_name}.rep", "idata")
+                already_imported = any(
+                    f.endswith(".db") and not f.startswith("~")
+                    for _, _, files in os.walk(idata) for f in files) \
+                    if os.path.isdir(idata) else False
                 ghidra = os.path.join(
                     ROOT, "analysis/ghidra/dist/ghidra_12.2_PUBLIC")
                 env = dict(os.environ,
