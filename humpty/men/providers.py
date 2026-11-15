@@ -156,8 +156,16 @@ def make_develop(spec: ProviderSpec, cache_dir: str | None = None,
                        "Fix it generally — no input-keyed special cases.")
         hit = cache.get(prompt, spec.model, spec.seed)
         if hit is not None:
-            log("cache hit")
-            return hit
+            # older cache entries may hold raw provider output (JSON
+            # envelopes, fences) from before _extract_c existed — heal
+            # them on read so the candidate file never sees them again
+            fixed = _extract_c(hit)
+            if fixed != hit:
+                cache.put(prompt, spec.model, spec.seed, fixed)
+                log("cache hit (normalized)")
+            else:
+                log("cache hit")
+            return fixed
         chat = _chat_litellm if spec.provider == "litellm" else _chat_claude
         last: Exception | None = None
         for attempt in range(retries):
