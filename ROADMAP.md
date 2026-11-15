@@ -121,7 +121,7 @@ Work items:
 | D3.2 funchook redirect | ✅ | g_orig_ naming, resolve table |
 | D4.1 PE64 loader | ✅ | stdlib struct parse, mmap, export resolution |
 | D4.2 Unicorn emulator | ✅ | MS ABI setup, requires pip install unicorn |
-| D4.3 Wine runner | deferred | Wine not installable on this host; requires a large system package + Win32 runtime |
+| D4.3 Wine runner | ✅ | Wine 10.0 installed on host; `humpty/analyze/pe_wine.py` runs mingw-built drivers headless (verified: fnv1a over `hello world` matches host-computed 3582672807) |
 | D5.1 --types-dir CLI | ✅ | --types-dir flag added |
 | D5.2 Prompt injection | ✅ | struct declarations injected into developer_prompt |
 | D5.3 -I types_dir | ✅ | passed to harness/candidate compilation |
