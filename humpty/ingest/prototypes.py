@@ -54,7 +54,7 @@ _GHIDRA_TYPES = {
 _PROTO_RE = re.compile(
     r"^\s*(?P<ret>[A-Za-z_][\w]*(?:\s*\*)*)\s+"
     r"(?P<name>[A-Za-z_][\w]*)\s*\((?P<params>[^)]*)\)\s*"
-    r"(?:[;{]\s*\}?\s*|;\s*|\{\s*\}?\s*)$")
+    r"(?:[;{]\s*\}?\s*)?$")
 
 
 def normalize_type(t: str) -> str:
