@@ -48,13 +48,16 @@ def test_litellm_develop_end_to_end(tmp_path):
         dev = make_develop(spec, cache_dir=str(tmp_path))
         out = dev({"name": "f", "signature": "uint32_t f(void)",
                    "ret_type": "uint32_t", "notes": ""})
-        assert out == fake
-        # second identical call = cache hit (completion not called again)
+        # the JSON envelope is unwrapped to compilable C (the candidate
+        # file must never see the raw provider reply)
+        assert out == "uint32_t f(void){return 1;}"
+        # second identical call = cache hit (completion not called again);
+        # the cached value is the ALREADY-EXTRACTED C
         with mock.patch.object(litellm, "completion",
                                side_effect=AssertionError("cache miss!")):
             out2 = dev({"name": "f", "signature": "uint32_t f(void)",
                         "ret_type": "uint32_t", "notes": ""})
-            assert out2 == fake
+            assert out2 == "uint32_t f(void){return 1;}"
 
 
 def test_provider_table_complete():
