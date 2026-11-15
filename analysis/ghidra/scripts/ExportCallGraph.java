@@ -56,9 +56,23 @@ public class ExportCallGraph extends GhidraScript {
         String outPath = sargs.length >= 1 ? sargs[0] : "call_graph.json";
         // D1.3: subtree-scoped export — rootSymbol restricts the graph to
         // the transitive callee tree from that function; maxDepth bounds it
-        String rootSymbol = sargs.length >= 3 ? sargs[2] : null;
-        int maxDepth = sargs.length >= 4 ? Integer.parseInt(sargs[3])
-                                         : Integer.MAX_VALUE;
+        String rootSymbol = null;
+        int maxDepth = Integer.MAX_VALUE;
+        String langOutPath = null;
+
+        if (sargs.length == 3) {
+            // [0]=outPath, [1]=rootSymbol, [2]=depth (from cli.py)
+            rootSymbol = sargs[1];
+            try { maxDepth = Integer.parseInt(sargs[2]); } catch (Exception ignore) { }
+        } else if (sargs.length >= 4) {
+            // [0]=outPath, [1]=langOutPath, [2]=rootSymbol, [3]=depth
+            langOutPath = sargs[1];
+            rootSymbol = sargs[2];
+            try { maxDepth = Integer.parseInt(sargs[3]); } catch (Exception ignore) { }
+        } else if (sargs.length == 2) {
+            // [0]=outPath, [1]=langOutPath or rootSymbol
+            langOutPath = sargs[1];
+        }
 
         // --- binary metadata ---------------------------------------------
         // 12.2 API: getExecutablePath/getExecutableSHA256 on Program.

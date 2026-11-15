@@ -29,6 +29,8 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "horses", "src"))
 sys.path.insert(0, os.path.join(ROOT, "horses", "spikes"))
 
+from analysis.exporters import export_with  # noqa: E402  (needs ROOT on sys.path first)
+
 __all__ = ["main"]
 
 
@@ -286,51 +288,55 @@ def main(argv: list[str] | None = None) -> int:
 
             # D1.2: check cache first — if a cached call graph exists for
             # this binary+backend+exclude, skip the backend entirely.
-            cg_path = _graph_for(args, trees, progress=_export_progress)
-            cache_hit = os.path.exists(cg_path) and not args.force_export
+            cg_path = _cache_path_for(args)
+            cache_hit = _cache_hit(args) is not None and not args.force_export
             if cache_hit:
                 tt.message(f"[cache] reusing exported call graph: {cg_path}")
-            if not cache_hit:
-                if args.backend == "ghidra":
-                    # D1.1: persistent Ghidra project keyed by binary sha256.
-                    # If the project exists, skip -import (analysis already done,
-                    # startup drops from ~11 min to ~3 s).
-                    from humpty.ingest import binary_sha256 as _sha
-                    bin_sha = _sha(args.binary)
-                    cache_root = os.path.expanduser(
-                        f"~/.cache/bindumpty/ghidra/{bin_sha[:16]}")
-                    os.makedirs(cache_root, exist_ok=True)
-                    proj_name = "main"
-                    already_imported = os.path.isdir(
-                        os.path.join(cache_root, f"{proj_name}.rep"))
-                    ghidra = os.path.join(
-                        ROOT, "analysis/ghidra/dist/ghidra_12.2_PUBLIC")
-                    env = dict(os.environ,
-                               JAVA_HOME="/usr/lib/jvm/java-25-openjdk-amd64")
-                    cmd_prefix = [os.path.join(ghidra, "support/analyzeHeadless"),
-                                  cache_root, proj_name]
-                    if not already_imported:
-                        cmd_prefix += ["-import", args.binary, "-overwrite"]
-                    # D1.3: subtree-scoped export — pass root symbol + depth
-                    # as script args [2] and [3]
-                    script_args = [cg_path]
-                    roots = args.symbol or []
-                    if roots:
-                        script_args.append(roots[0])
-                        script_args.append(str(args.depth))
-                    proc = _sp.Popen(
-                        cmd_prefix
-                        + ["-scriptPath",
-                           os.path.join(ROOT, "analysis/ghidra/scripts"),
-                           "-postScript", "ExportCallGraph.java"] + script_args,
-                        stdout=_sp.PIPE, stderr=_sp.STDOUT, text=True,
-                        env=env, cwd=ROOT)
-                    for line in proc.stdout:
-                        tt.feed_ghidra(line)
-                    proc.wait()
-                    if proc.returncode != 0:
-                        raise RuntimeError(
-                            f"ghidra export failed rc={proc.returncode}")
+            if not cache_hit and args.backend != "ghidra":
+                # small backends run here; ghidra runs below via the
+                # D1.1 persistent-project branch (writes to cg_path too)
+                export_with(args.backend, args.binary, cg_path,
+                            progress=_export_progress)
+            if not cache_hit and args.backend == "ghidra":
+                # D1.1: persistent Ghidra project keyed by binary sha256.
+                # If the project exists, skip -import (analysis already
+                # done, startup drops from ~11 min to ~3 s).
+                from humpty.ingest import binary_sha256 as _sha
+                bin_sha = _sha(args.binary)
+                cache_root = os.path.expanduser(
+                    f"~/.cache/bindumpty/ghidra/{bin_sha[:16]}")
+                os.makedirs(cache_root, exist_ok=True)
+                proj_name = "main"
+                already_imported = os.path.isdir(
+                    os.path.join(cache_root, f"{proj_name}.rep"))
+                ghidra = os.path.join(
+                    ROOT, "analysis/ghidra/dist/ghidra_12.2_PUBLIC")
+                env = dict(os.environ,
+                           JAVA_HOME="/usr/lib/jvm/java-25-openjdk-amd64")
+                cmd_prefix = [os.path.join(ghidra, "support/analyzeHeadless"),
+                              cache_root, proj_name]
+                if not already_imported:
+                    cmd_prefix += ["-import", args.binary, "-overwrite"]
+                # D1.3: subtree-scoped export — pass root symbol + depth
+                # as script args [2] and [3]
+                script_args = [cg_path]
+                roots = args.symbol or []
+                if roots:
+                    script_args.append(roots[0])
+                    script_args.append(str(args.depth))
+                proc = _sp.Popen(
+                    cmd_prefix
+                    + ["-scriptPath",
+                       os.path.join(ROOT, "analysis/ghidra/scripts"),
+                       "-postScript", "ExportCallGraph.java"] + script_args,
+                    stdout=_sp.PIPE, stderr=_sp.STDOUT, text=True,
+                    env=env, cwd=ROOT)
+                for line in proc.stdout:
+                    tt.feed_ghidra(line)
+                proc.wait()
+                if proc.returncode != 0:
+                    raise RuntimeError(
+                        f"ghidra export failed rc={proc.returncode}")
             tt.finish_phase("I", "backend run")
             if export_ticks:
                 tt.message(f"backend progress: {export_ticks[-1][0]}/"
@@ -404,27 +410,42 @@ def _cache_dir_for(args) -> str:
                         ".bindumpty_cache")
 
 
+def _cache_path_for(args) -> str:
+    """Cache path for this binary+backend+exclude. No I/O beyond mkdir."""
+    cache_dir = _cache_dir_for(args)
+    os.makedirs(cache_dir, exist_ok=True)
+    key = _cache_key(args)
+    return os.path.join(cache_dir, f"cg_{key}.json")
+
+
+def _cache_hit(args) -> str | None:
+    """Return the cached graph path when valid for the current binary."""
+    cached = _cache_path_for(args)
+    if not os.path.exists(cached):
+        return None
+    try:
+        doc = json.load(open(cached))
+        from humpty.ingest import binary_sha256
+        if doc.get("binary", {}).get("sha256") == binary_sha256(args.binary):
+            return cached
+    except (json.JSONDecodeError, KeyError):
+        pass  # corrupt cache — re-export
+    return None
+
+
 def _graph_for(args, trees, progress=None) -> str:
     """Produce (or reuse a cached) fuz.call-graph/1 file.
 
     Cache key: binary sha256 + backend + exclude patterns. On a hit, the
     exported graph is reused — no re-analysis of the same binary with the
-    same settings.
+    same settings. On a miss, the backend runs HERE (small backends:
+    objdump/rizin); ghidra is handled by the caller's D1.1 persistent-
+    project branch, which writes to this same cache path.
     """
-    cache_dir = _cache_dir_for(args)
-    os.makedirs(cache_dir, exist_ok=True)
-    key = _cache_key(args)
-    cached = os.path.join(cache_dir, f"cg_{key}.json")
-    if os.path.exists(cached):
-        # verify the cached binary sha matches the current binary
-        try:
-            doc = json.load(open(cached))
-            from humpty.ingest import binary_sha256
-            if doc.get("binary", {}).get("sha256") == binary_sha256(args.binary):
-                return cached
-        except (json.JSONDecodeError, KeyError):
-            pass  # corrupt cache — re-export
-    out = os.path.join(cache_dir, f"cg_{key}.json")
+    cached = _cache_hit(args)
+    if cached:
+        return cached
+    out = _cache_path_for(args)
     export_with(args.backend, args.binary, out, progress=progress)
     return out
 
