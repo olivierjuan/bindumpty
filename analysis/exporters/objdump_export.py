@@ -71,6 +71,26 @@ def objdump_call_graph(binary: str | Path,
                 parts = line.split()
                 paddr, psize = int(parts[4], 16), int(parts[5], 16)
                 plt_addrs |= set(range(paddr, paddr + psize))
+        # Ingest identity is (binary, address). Two nm quirks break it:
+        # 1. the same NAME at several addresses (identical static bodies
+        #    across compilation units — ICC folds them into one
+        #    content-hash label) -> qualify repeats with the address;
+        # 2. the same ADDRESS under several names (ICC/MKL aliasing)
+        #    -> one row per address, first name canonical.
+        seen_names: dict[str, int] = {}
+        by_addr: dict[int, str] = {}
+        qualified: list[tuple[str, int]] = []
+        alias_notes: list[str] = []
+        for n, a in syms:
+            if a in by_addr:
+                alias_notes.append(f"{n} == {by_addr[a]}@{a:x}")
+                continue
+            k = seen_names.get(n, 0)
+            name = n if k == 0 else f"{n}@{a:x}"
+            seen_names[n] = k + 1
+            by_addr[a] = name
+            qualified.append((name, a))
+        syms = qualified
         BATCH = 512
         for batch_start in range(0, len(syms), BATCH):
             chunk = syms[batch_start:batch_start + BATCH]
@@ -114,7 +134,13 @@ def objdump_call_graph(binary: str | Path,
                 if i < 0:
                     continue
                 name = bounds[i][0]
-                tgt_name = (name_map or {}).get(tgt, f"fn_{tgt:x}")
+                # prefer the qualified function-table name; a target
+                # with no row (cold section the nm sweep skipped) is
+                # dropped — ingest requires edges to reference rows
+                if tgt not in by_addr and tgt not in (name_map or {}):
+                    continue
+                tgt_name = (name_map or {}).get(
+                    tgt, by_addr.get(tgt, f"fn_{tgt:x}"))
                 edge = {"caller": name, "callee": tgt_name, "kind": "direct"}
                 key = (edge["caller"], edge["callee"])
                 if key not in seen_edges and edge["caller"] != edge["callee"]:
@@ -124,9 +150,14 @@ def objdump_call_graph(binary: str | Path,
             progress(done, total)
         functions = [{"name": n, "address": f"0x{a:x}", "size": 0}
                      for n, a in syms]
+        note = "chunked batched export (512/batch)"
+        if alias_notes:
+            note += (f"; {len(alias_notes)} symbol aliases folded: "
+                     + "; ".join(alias_notes[:5])
+                     + (" ..." if len(alias_notes) > 5 else ""))
         return ExportResult(backend="objdump", source_lang="unknown",
                             functions=functions, edges=edges,
-                            notes=["chunked batched export (512/batch)"])
+                            notes=[note])
     dis = subprocess.run(["objdump", "-d", str(binary)],
                          capture_output=True, text=True, timeout=120).stdout
 
