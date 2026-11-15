@@ -86,6 +86,10 @@ def resolve_provider(provider: str | None, model: str | None,
     base = api_base or os.environ.get("HUMPTY_API_BASE")
     if provider == "claude" and not base:
         base = os.environ.get("ANTHROPIC_BASE_URL")
+    if provider in ("litellm", "codex", "gemini", "openrouter") and not base:
+        # deployments often export only LITELLM_BASE_URL (the corporate
+        # OpenAI-compatible gateway); honor it as the default base
+        base = os.environ.get("LITELLM_BASE_URL")
     return ProviderSpec(provider=provider, model=model, api_base=base,
                         api_key_env=key_env)
 
@@ -93,10 +97,21 @@ def resolve_provider(provider: str | None, model: str | None,
 def _chat_litellm(spec: ProviderSpec, prompt: str) -> str:
     import litellm
 
-    kwargs: dict = {"model": spec.model, "max_tokens": spec.max_tokens,
+    model = spec.model
+    # litellm infers the provider from a route prefix; a bare model name
+    # against a custom OpenAI-compatible gateway (api_base or
+    # LITELLM_BASE_URL) must default to the openai/ route or litellm
+    # rejects it: 'LLM Provider NOT provided'.
+    base = spec.api_base or os.environ.get("LITELLM_BASE_URL")
+    if "/" not in model.split("-", 1)[0] and base:
+        model = f"openai/{model}"
+    key = os.environ.get(spec.api_key_env or "LITELLM_KEY", "")
+    kwargs: dict = {"model": model, "max_tokens": spec.max_tokens,
                     "temperature": spec.temperature}
-    if spec.api_base:
-        kwargs["api_base"] = spec.api_base
+    if base:
+        kwargs["api_base"] = base
+    if key:
+        kwargs["api_key"] = key
     resp = litellm.completion(messages=[{"role": "user", "content": prompt}],
                               **kwargs)
     return resp.choices[0].message.content or ""
