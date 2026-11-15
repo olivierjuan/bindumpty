@@ -109,7 +109,8 @@ def run_with_recomposition(binary: str, model: str, recomposed_so: str,
 
 def validate_system(session, *, binary: str, models: list[str],
                     out_dir: str | Path | None = None,
-                    run_recompose: bool = True, log=print) -> dict:
+                    run_recompose: bool = True, log=print,
+                    ermite_solve_mps: str | None = None) -> dict:
     """Full P4 gate. Returns a machine-readable verdict dict.
 
     Parity rules:
@@ -149,13 +150,30 @@ def validate_system(session, *, binary: str, models: list[str],
                   and abs(base.objective - comp.objective)
                   <= _EPS_OBJECTIVE * max(1.0, abs(base.objective))
                   and base.iterations == comp.iterations)
-            results.append({
-                "model": model, "baseline": _asdict(base),
-                "recomposed": _asdict(comp), "parity": ok,
-            })
+            entry = {"model": model, "baseline": _asdict(base),
+                     "recomposed": _asdict(comp), "parity": ok}
+            if ermite_solve_mps:
+                from humpty.king.ermite_bridge import run_ermite, ermite_parity
+                er = run_ermite(ermite_solve_mps, model)
+                ok2, why = ermite_parity(base.objective, er)
+                entry["ermite_parity"] = ok2
+                entry["ermite"] = {"objective": er.objective,
+                                   "running_time_s": er.running_time_s,
+                                   "exit_code": er.exit_code, "why": why}
+                ok = ok and ok2
+            results.append(entry)
         else:
-            results.append({"model": model, "baseline": _asdict(base),
-                            "recomposed": None, "parity": None})
+            entry = {"model": model, "baseline": _asdict(base),
+                     "recomposed": None, "parity": None}
+            if ermite_solve_mps:
+                from humpty.king.ermite_bridge import run_ermite, ermite_parity
+                er = run_ermite(ermite_solve_mps, model)
+                ok2, why = ermite_parity(base.objective, er)
+                entry["ermite_parity"] = ok2
+                entry["ermite"] = {"objective": er.objective,
+                                   "running_time_s": er.running_time_s,
+                                   "exit_code": er.exit_code, "why": why}
+            results.append(entry)
 
     verdict = ("pass" if results and all(r["parity"] for r in results)
                else "fail")
@@ -181,6 +199,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--binary", required=True)
     ap.add_argument("--model", action="append", required=True)
     ap.add_argument("--out-dir", default=None)
+    ap.add_argument("--ermite-solve-mps", default=None,
+                    help="path to ermite's solve_mps binary — when given, "
+                         "a cross-implementation IPM parity check runs "
+                         "against the same models (GAP 4)")
     args = ap.parse_args(argv)
 
     from humpty.db import make_session_factory
@@ -198,7 +220,8 @@ def main(argv: list[str] | None = None) -> int:
     factory = make_session_factory(eng)
     with session_scope(factory) as s:
         doc = validate_system(s, binary=args.binary, models=args.model,
-                              out_dir=args.out_dir)
+                              out_dir=args.out_dir,
+                              ermite_solve_mps=args.ermite_solve_mps)
     eng.dispose()
     print(json.dumps(doc, indent=1))
     return 0 if doc["verdict"] == "pass" else 1
