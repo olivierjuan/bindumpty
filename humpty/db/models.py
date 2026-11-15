@@ -104,6 +104,8 @@ class Function(Base):
     size: Mapped[int | None] = mapped_column(Integer)
     demangled_sig: Mapped[str | None] = mapped_column(Text)
     has_rtti: Mapped[bool] = mapped_column(Boolean, default=False)
+    # D2.1: decompiled C pseudo-code from Ghidra (on-demand, FR-2/D2)
+    decompiled_code: Mapped[str | None] = mapped_column(Text, nullable=True)
     scc_id: Mapped[int | None] = mapped_column(Integer, index=True)
     # Lifecycle state (humpty.domain.State.value) and its confidence score.
     state: Mapped[str] = mapped_column(String(16), default="pending", index=True)
