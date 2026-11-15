@@ -265,3 +265,21 @@ def ingest_indirect_edges(session, *, binary_sha256: str,
     if created:
         log(f"DR: added {created} indirect_resolved edges")
     return created
+
+
+def snapshots_to_replay_pages(snap: dict) -> tuple[dict, dict]:
+    """Convert a parsed DRSNAP02 snapshot into (in_pages, out_pages) for
+    snapshot_replay's driver: the read set (arg-pointed pages, pre-image)
+    plus the write set (pre + final bytes). Keys are hex addresses."""
+    in_pages: dict[str, bytes] = {}
+    out_pages: dict[str, bytes] = {}
+    for addr, data in snap.get("reads", {}).items():
+        in_pages[addr] = data
+    for addr, w in snap.get("writes", {}).items():
+        # the driver maps out pages and diffs post vs recorded: the page
+        # must start with the PRE-image and end matching the POST image —
+        # for v0 the pre-image is the replay seed and the diff target is
+        # the recorded final bytes
+        in_pages.setdefault(addr, w["pre"])
+        out_pages[addr] = w["post"]
+    return in_pages, out_pages

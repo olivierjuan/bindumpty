@@ -80,6 +80,28 @@ def _decompiled_for(session, fn, binary_path: str | None, log=print) -> str | No
         return None
 
 
+def _indirect_callees(session, fn, log=print) -> list[str]:
+    """FR-5.2 enrichment: resolved indirect-call targets for this function
+    (DynamoRIO edge pass, kind 'indirect_resolved'), formatted as
+    dispatch-table knowledge for the developer prompt. Empty when no
+    edge pass has run."""
+    from humpty.db.models import CallEdge
+    rows = (session.query(CallEdge)
+            .filter(CallEdge.caller_id == fn.id,
+                    CallEdge.kind == "indirect_resolved").all())
+    out = []
+    for e in rows:
+        callee = session.get(Function, e.callee_id)
+        if callee is None:
+            continue
+        out.append(f"indirect call resolved at runtime: {callee.name} "
+                   f"(at +0x{callee.address:x})")
+    if out:
+        log(f"  {fn.name}: {len(out)} resolved indirect targets "
+            f"added to the prompt")
+    return out
+
+
 class LeafLoopError(RuntimeError):
     """An illegal lifecycle transition was attempted (states.py is law)."""
 
@@ -151,7 +173,8 @@ def run_leaf_loop(session: Session, *, function_id: int, develop,
     session.refresh(fn)
     spec = {"name": fn.name, "signature": fn.demangled_sig or fn.name,
             "ret_type": "", "notes": "", "decompiled_c": decompiled,
-            "types_header": types_header}
+            "types_header": types_header,
+            "callees": _indirect_callees(session, fn, log=log)}
     divergences_seen = 0
     t0 = time.perf_counter()
 
@@ -263,7 +286,8 @@ def _run_with_generated_harness(session: Session, *, fn: Function, develop,
     session.refresh(fn)
     spec = {"name": fn.name, "signature": fn.demangled_sig or fn.name,
             "ret_type": "", "notes": "", "decompiled_c": decompiled,
-            "types_header": types_header}
+            "types_header": types_header,
+            "callees": _indirect_callees(session, fn, log=log)}
     divergences_seen = 0
     t0 = time.perf_counter()
 
