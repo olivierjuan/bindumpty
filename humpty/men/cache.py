@@ -29,7 +29,18 @@ from humpty.men.fixer import normalize_source
 
 __all__ = ["LLMResponseCache"]
 
-DEFAULT_CACHE_DIR = Path(".llm_cache")
+def _default_cache_dir() -> Path:
+    """The LLM cache lives in the project tree (humpty.project); the
+    legacy .llm_cache is migrated on first use."""
+    try:
+        from humpty.project import llm_cache_dir, migrate_legacy
+        migrate_legacy()
+        return llm_cache_dir()
+    except Exception:  # noqa: BLE001 — project dir may be unwritable
+        return Path(".llm_cache")
+
+
+DEFAULT_CACHE_DIR = _default_cache_dir()
 
 
 class LLMResponseCache:

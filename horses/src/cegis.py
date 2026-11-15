@@ -62,7 +62,10 @@ def stub_develop(spec, counterexample: str | None = None) -> str:
     """LLM-free stand-in: knows the fix for the seed bug. Verifies the loop
     plumbing end to end without a live model (CI-safe)."""
     if counterexample is None:
-        return open(os.path.join(ROOT, "horses", "src", "horse_candidate.c")).read()
+        # the LIVE candidate source lives in the project tree (P-project);
+        # reading the legacy repo path made iteration 1 "repair" with a
+        # stale file before any fuzz ran
+        return open(hd.CAND_SRC).read()
     return GOOD_SRC
 
 

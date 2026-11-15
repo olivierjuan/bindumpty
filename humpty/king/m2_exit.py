@@ -134,8 +134,9 @@ int digit_sum_u32(uint32_t x) {
 
     print("[3/3] hybrid harness, FR-7 hook mode (validated callees substituted)")
     env = dict(os.environ, HORSE_HOOK="1")
-    r = subprocess.run([os.path.join(ROOT, "horses/libfuzzer/m2_hybrid"),
-                        os.path.join(ROOT, "horses/corpus/m2"),
+    from humpty.project import build_dir
+    r = subprocess.run([os.path.join(build_dir(), "m2_hybrid"),
+                        os.path.join(build_dir(), "corpus", "m2"),
                         "-max_total_time=20"],
                        capture_output=True, text=True, cwd=ROOT, env=env,
                        timeout=120)

@@ -4,7 +4,7 @@ Bridges the CEGIS loop (horses/spikes/s4_core.py) to the real libFuzzer
 harness (horses/src/m1_harness.c + build_horse.sh):
 
   write_candidate(src) -> rebuild horse_candidate.so
-  run_fuzz(budget_s)   -> run ./horses/libfuzzer/harness for a wall budget
+  run_fuzz(budget_s)   -> run the built harness for a wall budget
   run_replay(inputs)   -> deterministic replay of specific inputs (NFR-2)
 
 The harness's original is the ground-truth fnv1a linked from
@@ -20,16 +20,22 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 import subprocess
 import time
 from dataclasses import dataclass
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-OUT = os.path.join(ROOT, "horses", "libfuzzer")
+sys.path.insert(0, ROOT)
+# the project tree holds the mutable artifacts: live candidate source,
+# harness/candidate builds, corpus
+from humpty.project import src_dir as _proj_src, build_dir as _proj_build
+
+OUT = str(_proj_build())
 HARNESS = os.path.join(OUT, "harness")
 CAND_SO = os.path.join(OUT, "horse_candidate.so")
-CAND_SRC = os.path.join(ROOT, "horses", "src", "horse_candidate.c")
-CORPUS = os.path.join(ROOT, "horses", "corpus", "m1")
+CAND_SRC = os.path.join(_proj_src(), "horse_candidate.c")
+CORPUS = os.path.join(OUT, "corpus", "m1")
 
 _DIVERGENCE_RE = re.compile(
     r"HORSE DIVERGENCE len=(\d+) input=([0-9a-f]*) got=0x([0-9A-F]+) want=0x([0-9A-F]+)"
@@ -95,11 +101,14 @@ def run_fuzz(budget_s: int = 30, max_len: int = 4096) -> FuzzResult:
     """
     os.makedirs(CORPUS, exist_ok=True)
     t0 = time.perf_counter()
+    # the harness dlopens the candidate by env — point it at the
+    # project build (the C default is the legacy relative path)
+    env = dict(os.environ, HORSE_CANDIDATE_SO=CAND_SO)
     p = subprocess.run(
         [HARNESS, CORPUS, f"-max_len={max_len}",
          f"-max_total_time={budget_s}", "-print_final_stats=1"],
         capture_output=True, text=True, timeout=budget_s + 30,
-        cwd=ROOT,
+        cwd=ROOT, env=env,
     )
     wall = time.perf_counter() - t0
     lines = (p.stdout + p.stderr).splitlines()
@@ -129,8 +138,9 @@ def run_replay(inputs: list[bytes]) -> list[Counterexample]:
             path = os.path.join(td, "replay")
             with open(path, "wb") as f:
                 f.write(data)
+            env = dict(os.environ, HORSE_CANDIDATE_SO=CAND_SO)
             p = subprocess.run([HARNESS, path, "-runs=0"], capture_output=True,
-                               text=True, timeout=30, cwd=ROOT)
+                               text=True, timeout=30, cwd=ROOT, env=env)
             divs, _ = _parse((p.stdout + p.stderr).splitlines())
             if divs:
                 # keep only divergences whose input matches what we replayed

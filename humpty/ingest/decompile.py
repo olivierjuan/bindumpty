@@ -1,7 +1,7 @@
 """humpty.ingest.decompile — on-demand Ghidra decompilation (D2.2 + P1).
 
 Runs DecompileFunction.java inside the persistent Ghidra project
-(D1.1, ~/bindumpty-ghidra/<sha16>) and returns {name: C pseudo-code}.
+(D1.1, <project>/ghidra/<sha16>) and returns {name: C pseudo-code}.
 Used by the synthesis loop (P1): when a function reaches `ready` and
 its functions.decompiled_code is still NULL, the loop triggers one of
 these and persists the result.
@@ -28,9 +28,10 @@ def decompile_on_demand(binary: str, function_name: str | None = None,
     ~10 min analysis; later calls reuse the project (~seconds).
     """
     from humpty.ingest import binary_sha256
+    from humpty.project import ghidra_dir
 
     sha = binary_sha256(binary)
-    cache_root = os.path.expanduser(f"~/bindumpty-ghidra/{sha[:16]}")
+    cache_root = str(ghidra_dir() / sha[:16])
     os.makedirs(cache_root, exist_ok=True)
     # 'already imported' = a program .db exists in the repo (see cli.py)
     idata = os.path.join(cache_root, "main.rep", "idata")
@@ -67,10 +68,11 @@ def _file_cache(binary: str, function_name: str):
     on disk keyed by (binary sha, function name). The first run pays
     the 10-min Ghidra import; every later run is a file read."""
     from humpty.ingest import binary_sha256
+    from humpty.project import decompiled_dir
     sha = binary_sha256(binary)
-    d = os.path.expanduser(f"~/.cache/bindumpty/decompiled/{sha[:16]}")
-    os.makedirs(d, exist_ok=True)
-    return os.path.join(d, f"{function_name}.c")
+    d = decompiled_dir() / sha[:16]
+    d.mkdir(parents=True, exist_ok=True)
+    return str(d / f"{function_name}.c")
 
 
 def ensure_decompiled(session, fn, binary: str, log=print) -> str | None:

@@ -30,6 +30,7 @@ sys.path.insert(0, os.path.join(ROOT, "horses", "src"))
 sys.path.insert(0, os.path.join(ROOT, "horses", "spikes"))
 
 from analysis.exporters import export_with  # noqa: E402  (needs ROOT on sys.path first)
+from humpty.project import new_run_dir  # noqa: E402
 
 __all__ = ["main"]
 
@@ -253,7 +254,7 @@ def main(argv: list[str] | None = None) -> int:
     from humpty.king.run import run_subtree
 
     db_path = args.db or os.path.join(
-        tempfile.mkdtemp(prefix="bindumpty-run-"), "run.db")
+        str(new_run_dir("run")), "run.db")
     eng = create_engine(f"sqlite:///{db_path}",
                         connect_args={"timeout": 30, "check_same_thread": False})
     ini = Config(os.path.join(ROOT, "alembic.ini"))
@@ -269,7 +270,9 @@ def main(argv: list[str] | None = None) -> int:
         ("I", "export call graph",
          ["backend run", "post-script", "graph written"]),
         ("II", "ingest into DB", ["functions", "edges"]),
-        ("III", "CEGIS run", [f"validate {t.root}" for t in trees.values()]),
+        ("III", "filter libraries (FR-2)",
+         ["symbol patterns"]),
+        ("IV", "CEGIS run", [f"validate {t.root}" for t in trees.values()]),
     ]
     tt = TodoTree(console, groups)
 
@@ -304,10 +307,10 @@ def main(argv: list[str] | None = None) -> int:
                 from humpty.ingest import binary_sha256 as _sha
                 bin_sha = _sha(args.binary)
                 # Ghidra 12.2 rejects project paths whose elements start
-                # with '.', so the persistent store cannot live under
-                # ~/.cache — use ~/bindumpty-ghidra/<sha16> instead.
-                cache_root = os.path.expanduser(
-                    f"~/bindumpty-ghidra/{bin_sha[:16]}")
+                # with '.', so the persistent store lives in the project
+                # tree (<project>/ghidra/<sha16>).
+                from humpty.project import ghidra_dir
+                cache_root = str(ghidra_dir() / bin_sha[:16])
                 os.makedirs(cache_root, exist_ok=True)
                 proj_name = "main"
                 # 'Already imported' = a program actually exists in the
@@ -387,6 +390,18 @@ def main(argv: list[str] | None = None) -> int:
                     load_call_graph(s, json_path=cg_path, binary=args.binary,
                                     progress=on_progress)
 
+        # FR-2 Tier 1: instant symbol-pattern pruning — vendor/runtime
+        # routines never enter CEGIS as synthesis targets
+        tt.start_phase("III", "filter libraries")
+        pruned_count = 0
+        with step_ctx(console, "filter libraries (FR-2)") as st:
+            from humpty.analyze.library_filter import prune_libraries
+            with session_scope(factory) as s:
+                stats = prune_libraries(s, binary_sha256=sha,
+                                        log=lambda m: tt.message(m))
+            pruned_count = stats["pruned"]
+        tt.finish_phase("III", "filter libraries")
+
     from humpty.men.providers import make_develop
     develop = make_develop(spec)
 
@@ -435,8 +450,8 @@ def _cache_key(args) -> str:
 def _cache_dir_for(args) -> str:
     if args.cache_dir:
         return args.cache_dir
-    return os.path.join(os.path.dirname(os.path.abspath(args.binary)),
-                        ".bindumpty_cache")
+    from humpty.project import callgraph_cache_dir
+    return str(callgraph_cache_dir())
 
 
 def _cache_path_for(args) -> str:

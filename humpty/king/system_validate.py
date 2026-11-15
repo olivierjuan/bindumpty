@@ -120,7 +120,11 @@ def validate_system(session, *, binary: str, models: list[str],
     """
     from humpty.king.recompose import recompose
 
-    out = Path(out_dir) if out_dir else Path(tempfile_dir())
+    if out_dir:
+        out = Path(out_dir)
+    else:
+        from humpty.project import results_dir
+        out = results_dir()
     out.mkdir(parents=True, exist_ok=True)
 
     so_path = None
@@ -211,7 +215,9 @@ def main(argv: list[str] | None = None) -> int:
     from alembic import command
     from alembic.config import Config
 
-    db = os.path.join(args.out_dir or tempfile_dir(), "sysval.db")
+    from humpty.project import results_dir as _results_dir
+    out_root = args.out_dir or str(_results_dir())
+    db = os.path.join(out_root, "sysval.db")
     eng = create_engine(f"sqlite:///{db}")
     ini = Config(str(ROOT / "alembic.ini"))
     ini.set_main_option("script_location", str(ROOT / "humpty/db/alembic"))

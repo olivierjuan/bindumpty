@@ -11,10 +11,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 ROOT=$(pwd)
-OUT=horses/libfuzzer
+# artifacts live in the project tree (humpty.project): HUMPTY_PROJECT_DIR
+# or ./bindumpty-project
+PROJ=${HUMPTY_PROJECT_DIR:-$ROOT/bindumpty-project}
+PROJ=$(python3 -c "import os,sys;sys.path.insert(0,'$ROOT');print(os.path.abspath(os.environ.get('HUMPTY_PROJECT_DIR','bindumpty-project')))")
+OUT="$PROJ/build"
 mkdir -p "$OUT"
 
-CAND_SRC=${CANDIDATE_SRC:-$ROOT/horses/src/horse_candidate.c}
+CAND_SRC=${CANDIDATE_SRC:-$PROJ/src/horse_candidate.c}
 
 # 1. harness + original (differential oracle), libFuzzer persistent mode.
 clang -O1 -g -fsanitize=fuzzer,address -fno-omit-frame-pointer \
