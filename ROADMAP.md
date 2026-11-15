@@ -107,6 +107,25 @@ Work items:
 
 **Exit criterion.** At least one leaf proven equivalent (not merely non-refuted); information-gain scheduling measurably better than topological order under the same budgets; at least one previously failed function recovered by a resurrected candidate.
 
+## D-directive status (user-directed improvements)
+
+| Directive | Status | Notes |
+| --- | --- | --- |
+| D1.1 Persistent Ghidra project | ✅ | keyed by binary sha256, analysis reuse |
+| D1.2 Cached call graph | ✅ | skip backend on hit |
+| D1.3 Subtree-scoped export | ✅ | root symbol + depth passed to Ghidra script |
+| D2.1 decompiled_code column | ✅ | Alembic migration |
+| D2.2 Ghidra decompilation | ✅ | DecompileFunction.java, 26 fns on toy verified |
+| D2.3 ingest-decompiled | ✅ | loads pre-existing .c corpora |
+| D3.1 Callee interception | ✅ | validated callees compiled into parent harness |
+| D3.2 funchook redirect | ✅ | g_orig_ naming, resolve table |
+| D4.1 PE64 loader | ✅ | stdlib struct parse, mmap, export resolution |
+| D4.2 Unicorn emulator | ✅ | MS ABI setup, requires pip install unicorn |
+| D4.3 Wine runner | deferred | Wine not installable on this host; requires a large system package + Win32 runtime |
+| D5.1 --types-dir CLI | ✅ | --types-dir flag added |
+| D5.2 Prompt injection | ✅ | struct declarations injected into developer_prompt |
+| D5.3 -I types_dir | ✅ | passed to harness/candidate compilation |
+
 ## FR → milestone traceability
 
 | Requirement | Milestone(s) |
