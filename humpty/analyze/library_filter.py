@@ -65,7 +65,9 @@ def classify_symbol(name: str) -> str | None:
     return None
 
 
-def prune_libraries(session, *, binary_sha256: str, log=print) -> dict:
+def prune_libraries(session, *, binary_sha256: str,
+                    binary_path: str | Path | None = None,
+                    log=print) -> dict:
     """Tier 1 pruning over one binary's Function rows.
 
     Marks every row whose name (or demangled signature's function name)
@@ -81,6 +83,13 @@ def prune_libraries(session, *, binary_sha256: str, log=print) -> dict:
     rows = (session.query(Function)
             .filter(Function.binary_sha256 == binary_sha256).all())
     pruned, families = 0, {}
+
+    # Tier 2: stripped-binary thunk sweep — functions that are pure
+    # jump glue (1-3 jmp instructions) are dispatch, never synthesis
+    # targets. Runs once per binary; FUN_-named rows (no symbol) match
+    # by address.
+    thunks = find_thunks(binary_path)
+    by_addr = {fn.address: fn for fn in rows}
     for fn in rows:
         candidates = [fn.name or ""]
         sig = fn.demangled_sig or ""
@@ -91,6 +100,8 @@ def prune_libraries(session, *, binary_sha256: str, log=print) -> dict:
             fam = classify_symbol(cand)
             if fam:
                 break
+        if fam is None and fn.address in thunks:
+            fam = "thunk"
         if fam is None:
             continue
         # an already-trusted row (byte-verified) keeps its fingerprint;
@@ -109,3 +120,78 @@ def prune_libraries(session, *, binary_sha256: str, log=print) -> dict:
             + ", ".join(f"{k}={v}" for k, v in sorted(families.items(),
                                                         key=lambda x: -x[1])))
     return {"pruned": pruned, "families": families}
+
+
+# --------------------------------------------------------------------------
+# Tier 2 — stripped-binary heuristics (p-code / disassembly level)
+# --------------------------------------------------------------------------
+
+def find_thunks(binary: str | Path, min_addr: int = 0,
+                max_addr: int = 2**64) -> dict[int, int]:
+    """Detect PLT-style thunks: tiny functions whose body is only
+    indirect jumps (jmp *%rax / bnd jmp *%rax / jmp qword ptr [rip+X]).
+
+    Returns {thunk_addr: target_addr}. Thunks are dispatch glue, not
+    synthesis targets — the caller marks them trusted with
+    fingerprint 'vendor::thunk'.
+    """
+    import subprocess
+    r = subprocess.run(
+        ["objdump", "-d", "--no-show-raw-insn",
+         f"--start-address=0x{min_addr:x}", f"--stop-address=0x{max_addr:x}",
+         str(binary)],
+        capture_output=True, text=True, timeout=600)
+    thunks: dict[int, int] = {}
+    cur_addr = None
+    insns: list[str] = []
+    for line in r.stdout.splitlines():
+        m = re.match(r"^\s*([0-9a-f]+) <([^>]+)>:", line)
+        if m:
+            if cur_addr is not None and _is_thunk(insns):
+                tgt = _thunk_target(insns)
+                if tgt is not None:
+                    thunks[cur_addr] = tgt
+            cur_addr, insns = int(m.group(1), 16), []
+            continue
+        mi = re.match(r"^\s*[0-9a-f]+:\s+(.*)$", line)
+        if mi and cur_addr is not None:
+            insns.append(mi.group(1).strip())
+    if cur_addr is not None and _is_thunk(insns):
+        tgt = _thunk_target(insns)
+        if tgt is not None:
+            thunks[cur_addr] = tgt
+    return thunks
+
+
+_THUNK_JMP = re.compile(r"^\s*(?:bnd\s+)?jmp\s*\*?%?\w*$|"
+                        r"^\s*(?:bnd\s+)?jmp\s+.*\*%|"
+                        r"^\s*(?:bnd\s+)?jmp\s+qword ptr \[rip")
+
+
+def _is_thunk(insns: list[str]) -> bool:
+    """Pure jump glue: 1-3 instructions where every non-padding
+    instruction is a jmp (direct or indirect), optionally fronted by a
+    lazy-binding push. Genuinely callable thunks, never algorithms."""
+    if not 1 <= len(insns) <= 3:
+        return False
+    saw_jmp = False
+    for ins in insns:
+        if re.match(r"^(?:bnd\s+)?jmp\b", ins):
+            saw_jmp = True
+            continue
+        if re.match(r"^push\b", ins):     # lazy PLT stub: push + jmp
+            continue
+        if re.match(r"^(?:nopl?|nop\b|xchg\s+%ax,%ax)", ins):  # padding
+            continue
+        return False
+    return saw_jmp
+
+
+def _thunk_target(insns: list[str]) -> int | None:
+    """Best-effort static target of the jump (register jumps return
+    None — the target is a runtime pointer)."""
+    last = insns[-1]
+    m = re.search(r"jmp\s+(?:qword ptr \[rip\+)?(?:0x)?([0-9a-f]+)", last)
+    if m:
+        return int(m.group(1), 16)
+    return None
